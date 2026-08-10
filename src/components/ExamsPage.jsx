@@ -10,6 +10,16 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
   const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Normalization helper for Arabic strings
+  const normalize = (str) => {
+    if (!str) return '';
+    return str
+      .trim()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
+  };
+
   // Destructure persistent state from props
   const { view: activeSubView, divisionId: selectedDivisionId, course: selectedCourse, examIdForResult: selectedExamIdForResult } = viewState;
 
@@ -23,7 +33,7 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
   const [mode, setMode] = useState('create');
 
   const selectedDivision = useMemo(() =>
-    divisions.find(d => d.id === selectedDivisionId),
+    divisions.find(d => String(d.id) === String(selectedDivisionId)),
     [divisions, selectedDivisionId]
   );
 
@@ -50,7 +60,7 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
 
   useEffect(() => {
     loadExams();
-  }, [currentAcademicYear]);
+  }, [currentAcademicYear, activeSubView]); // Re-fetch when entering the list view to be sure
 
   const [formData, setFormData] = useState({
     subject: 'الرياضيات',
@@ -67,19 +77,15 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
   const [toastMessage, setToastMessage] = useState('');
 
   const filteredExams = useMemo(() => {
-    console.log('Filtering exams. Selected Div:', selectedDivisionId, 'Course:', selectedCourse);
-    let list = exams;
-    if (selectedDivisionId) {
-      list = list.filter(e =>
-        String(e.divisionId) === String(selectedDivisionId) &&
-        String(e.course || '').trim() === String(selectedCourse || '').trim()
-      );
-    }
+    if (!selectedDivisionId) return [];
 
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return list;
+    const divId = String(selectedDivisionId);
+    const targetCourse = normalize(selectedCourse);
 
-    return list.filter((exam) => String(exam.subject).toLowerCase().includes(term));
+    return exams.filter(e =>
+      String(e.divisionId) === divId &&
+      normalize(e.course) === targetCourse
+    );
   }, [exams, searchTerm, selectedDivisionId, selectedCourse]);
 
   const openCreateModal = () => {

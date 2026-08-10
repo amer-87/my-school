@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getFinalResults, promoteStudents } from '../services/databaseApi';
 
-function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, viewState, setViewState }) {
+function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
   const [results, setResults] = useState([]);
+
+  // Normalization helper for Arabic strings
+  const normalize = (str) => {
+    if (!str) return '';
+    return str
+      .trim()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
+  };
 
   // Destructure persistent state from props
   const { view: activeSubView, divisionId: selectedDivisionId, course: selectedCourse } = viewState;
@@ -43,17 +53,24 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
   const filteredResults = useMemo(() => {
     if (!selectedDivisionId) return [];
     const divId = String(selectedDivisionId);
-    const crs = String(selectedCourse || '').trim();
+    const targetCourse = normalize(selectedCourse);
 
     return results
       .filter(r => String(r.divisionId) === divId)
       .map(s => {
-        const courseSubjects = s.subjects.filter(sub => String(sub.course || '').trim() === crs);
+        const courseSubjects = s.subjects.filter(sub => normalize(sub.course) === targetCourse);
         const validSubjects = courseSubjects.filter(sub => sub.score !== null);
         const totalScore = validSubjects.reduce((sum, sub) => sum + sub.score, 0);
         const maxPossible = validSubjects.reduce((sum, sub) => sum + sub.total, 0);
         const average = maxPossible > 0 ? (totalScore / maxPossible) * 100 : 0;
         const isFailed = validSubjects.some(sub => sub.score < (sub.total / 2));
+
+        let status = validSubjects.length === 0 ? 'غير مكتمل' : (isFailed ? 'مكمل' : 'ناجح');
+
+        // If student is already promoted or graduated in the DB, show that status
+        if (s.studentStatus === 'ناجح ومرحل' || s.studentStatus === 'خريج') {
+          status = s.studentStatus;
+        }
 
         return {
           ...s,
@@ -61,7 +78,7 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
           totalScore,
           maxPossible,
           average: average.toFixed(1),
-          status: validSubjects.length === 0 ? 'غير مكتمل' : (isFailed ? 'مكمل' : 'ناجح')
+          status
         };
       });
   }, [results, selectedDivisionId, selectedCourse]);
@@ -72,9 +89,11 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
   };
 
   const handlePromote = async () => {
-    const graduates = filteredResults.filter(r => r.status === 'ناجح');
+    // Only students who are "Pass" based on scores AND still have "Active" status in DB
+    const graduates = filteredResults.filter(r => r.status === 'ناجح' && r.studentStatus === 'نشط');
+
     if (graduates.length === 0) {
-      alert('لا يوجد طلاب ناجحون للترحيل في القائمة الحالية.');
+      alert('لا يوجد طلاب ناجحون جدد للترحيل في القائمة الحالية (ربما تم ترحيلهم مسبقاً).');
       return;
     }
 
@@ -85,6 +104,7 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
     try {
       await promoteStudents(graduates.map(g => g.id), currentUser.id, currentAcademicYear);
       alert('تم ترحيل الطلاب بنجاح للعام القادم.');
+      if (onRefresh) await onRefresh();
       await loadResults();
     } catch (err) {
       console.error(err);
@@ -102,6 +122,7 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
   // Extract unique subjects and their dates for columns
   const subjectsColumns = useMemo(() => {
     const subs = {};
+    const targetCourse = normalize(selectedCourse);
     filteredResults.forEach(r => {
       r.courseSubjects.forEach(s => {
         if (!subs[s.name]) {
@@ -110,7 +131,7 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
       });
     });
     return Object.entries(subs).map(([name, date]) => ({ name, date }));
-  }, [filteredResults]);
+  }, [filteredResults, selectedCourse]);
 
   if (activeSubView === 'selection') {
     return (
@@ -205,8 +226,19 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
                 {filteredResults.map((row) => (
                   <tr key={row.id}>
                     <td style={{ textAlign: 'center' }}>
-                      <span className={`status-pill ${row.status === 'ناجح' ? 'active' : (row.status === 'مكمل' ? 'absent' : '')}`}>
-                        {row.status === 'ناجح' ? '✓ ناجح' : (row.status === 'مكمل' ? '✕ مكمل' : row.status)}
+                      <span className={`status-pill ${
+                        row.status === 'ناجح' ? 'active' :
+                        row.status === 'مكمل' ? 'absent' :
+                        (row.status === 'ناجح ومرحل' || row.status === 'خريج') ? 'promoted' : ''
+                      }`} style={
+                        (row.status === 'ناجح ومرحل' || row.status === 'خريج')
+                        ? { background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid #10b981' }
+                        : {}
+                      }>
+                        {row.status === 'ناجح' ? '✓ ناجح' :
+                         row.status === 'مكمل' ? '✕ مكمل' :
+                         row.status === 'ناجح ومرحل' ? '📦 تم الترحيل' :
+                         row.status === 'خريج' ? '🎓 خريج' : row.status}
                       </span>
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 'bold' }}>

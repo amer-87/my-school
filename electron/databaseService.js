@@ -493,7 +493,7 @@ async function getFinalResults(academicYear = null) {
   const yearFilter = academicYear ? ` AND s.academic_year = '${academicYear}'` : '';
   const query = `
     SELECT
-      s.id as student_id, s.full_name, s.grade_id, s.division_id,
+      s.id as student_id, s.full_name, s.grade_id, s.division_id, s.status as student_status,
       g.name as grade_name, g.level as grade_level,
       e.subject as subject_name, e.exam_date, e.course as exam_course, er.score, e.total_score
     FROM students s
@@ -512,6 +512,7 @@ async function getFinalResults(academicYear = null) {
         fullName: row.full_name,
         gradeId: row.grade_id,
         divisionId: row.division_id,
+        studentStatus: row.student_status,
         gradeName: row.grade_name,
         gradeLevel: row.grade_level,
         subjects: []
@@ -551,35 +552,38 @@ async function promoteStudents(studentIds, userId, currentYear) {
       if (!student) continue;
 
       const currentIdx = sortedGrades.findIndex(g => g.id === student.grade_id);
-      let nextGradeId = student.grade_id;
-      let nextGradeName = student.grade;
-      let nextStatus = 'نشط';
 
-      if (currentIdx !== -1 && currentIdx < sortedGrades.length - 1) {
-        const nextGrade = sortedGrades[currentIdx + 1];
-        nextGradeId = nextGrade.id;
-        nextGradeName = nextGrade.name;
-      } else {
-        nextStatus = 'متخرج';
+      // Case 1: Student is in Grade 6 (or the last grade in the list)
+      if (currentIdx === -1 || currentIdx === sortedGrades.length - 1) {
+        // Mark as Graduate in current year record
+        await run('UPDATE students SET status = ? WHERE id = ?', ['خريج', id]);
+        await logActivity(userId, 'UPDATE', 'students', `تخرج الطالب ${student.full_name} من المدرسة (الصف السادس)`);
       }
+      // Case 2: Student is in a lower grade (1-5)
+      else {
+        const nextGrade = sortedGrades[currentIdx + 1];
 
-      // Check if student already promoted to next year to avoid duplicates
-      const exists = await get('SELECT id FROM students WHERE full_name = ? AND academic_year = ?', [student.full_name, nextYear]);
+        // Mark current record as 'ناجح ومرحل'
+        await run('UPDATE students SET status = ? WHERE id = ?', ['ناجح ومرحل', id]);
 
-      if (!exists) {
-        await run(`
-          INSERT INTO students (
-            full_name, gender, birth_date, grade, grade_id,
-            division, division_id, phone, guardian_name, address,
-            status, academic_year, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          student.full_name, student.gender, student.birth_date, nextGradeName, nextGradeId,
-          student.division, student.division_id, student.phone, student.guardian_name, student.address,
-          nextStatus, nextYear, userId
-        ]);
+        // Check if student already promoted to next year to avoid duplicates
+        const exists = await get('SELECT id FROM students WHERE full_name = ? AND academic_year = ?', [student.full_name, nextYear]);
 
-        await logActivity(userId, 'UPDATE', 'students', `ترحيل الطالب ${student.full_name} إلى ${nextGradeName} للعام ${nextYear}`);
+        if (!exists) {
+          await run(`
+            INSERT INTO students (
+              full_name, gender, birth_date, grade, grade_id,
+              division, division_id, phone, guardian_name, address,
+              status, academic_year, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            student.full_name, student.gender, student.birth_date, nextGrade.name, nextGrade.id,
+            student.division, student.division_id, student.phone, student.guardian_name, student.address,
+            'نشط', nextYear, userId
+          ]);
+
+          await logActivity(userId, 'UPDATE', 'students', `ترحيل الطالب ${student.full_name} من ${student.grade} إلى ${nextGrade.name} للعام ${nextYear}`);
+        }
       }
     }
     await executescript('COMMIT');

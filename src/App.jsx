@@ -145,9 +145,13 @@ function App() {
     return gradeOrder[clean] || 999;
   };
 
+  const activeStudents = useMemo(() => {
+    return students.filter(s => s.status === 'نشط');
+  }, [students]);
+
   const handleViewDivisionStudents = (division) => {
     const grade = grades.find(g => g.id === division.gradeId);
-    const studentsInDiv = students.filter(s => s.divisionId === division.id || (s.division === division.name && s.gradeId === division.gradeId));
+    const studentsInDiv = activeStudents.filter(s => s.divisionId === division.id || (s.division === division.name && s.gradeId === division.gradeId));
     setFilteredDirectoryStudents(studentsInDiv);
     setDirectoryTitle(`طلاب شعبة: ${division.name} (${grade?.name || ''})`);
     setIsDirectoryOpen(true);
@@ -170,14 +174,14 @@ function App() {
     const term = searchTerm.trim().toLowerCase();
 
     if (!term) {
-      return students;
+      return activeStudents;
     }
 
-    return students.filter((student) => {
+    return activeStudents.filter((student) => {
       const haystack = `${student.fullName} ${student.grade} ${student.division} ${student.phone}`.toLowerCase();
       return haystack.includes(term);
     });
-  }, [searchTerm, students]);
+  }, [searchTerm, activeStudents]);
 
   const filteredTeachers = useMemo(() => {
     const term = teacherSearchTerm.trim().toLowerCase();
@@ -196,10 +200,10 @@ function App() {
     [...grades]
       .sort((a, b) => getGradeWeight(a.name) - getGradeWeight(b.name))
       .map((grade) => {
-        const studentCount = students.filter(s => s.gradeId === grade.id || s.grade === grade.name).length;
+        const studentCount = activeStudents.filter(s => s.gradeId === grade.id || s.grade === grade.name).length;
         return { ...grade, level: grade.level, studentCount };
       }),
-  [grades, students]);
+  [grades, activeStudents]);
 
   const divisionRows = useMemo(() =>
     divisions
@@ -207,10 +211,10 @@ function App() {
       .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
       .map((division) => {
         const grade = grades.find((item) => item.id === division.gradeId);
-        const studentCount = students.filter(s => s.divisionId === division.id || (s.division === division.name && s.gradeId === division.gradeId)).length;
+        const studentCount = activeStudents.filter(s => s.divisionId === division.id || (s.division === division.name && s.gradeId === division.gradeId)).length;
         return { ...division, gradeName: grade ? grade.name : 'غير محدد', studentCount };
       }),
-  [divisions, grades, selectedGradeIdForDivisions, students]);
+  [divisions, grades, selectedGradeIdForDivisions, activeStudents]);
 
   const refreshAppData = async () => {
     try {
@@ -223,6 +227,8 @@ function App() {
         if (Array.isArray(data.attendance)) setAttendance(data.attendance);
         if (Array.isArray(data.fees)) setFees(data.fees);
       }
+      const years = await getAcademicYears();
+      if (Array.isArray(years)) setAcademicYears(years);
     } catch (error) {
       console.error('Failed to refresh app data', error);
     }
@@ -658,6 +664,19 @@ function App() {
           ))}
         </nav>
 
+        <div style={{ marginBottom: '20px', padding: '0 10px' }}>
+          <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>العام الدراسي الحالي:</label>
+          <select
+            value={currentAcademicYear}
+            onChange={(e) => setCurrentAcademicYear(e.target.value)}
+            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+          >
+            {academicYears.map(y => (
+              <option key={y.year_name} value={y.year_name}>{y.year_name}</option>
+            ))}
+          </select>
+        </div>
+
         <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
           <button
             className="nav-btn"
@@ -687,7 +706,7 @@ function App() {
             }}
           />
         ) : activeModule === 'dashboard' ? (
-          <DashboardPage students={students} teachers={teachers} fees={fees} onViewStudent={handleView} />
+          <DashboardPage students={activeStudents} teachers={teachers} fees={fees} onViewStudent={handleView} />
         ) : activeModule === 'students' ? (
           <section className="students-module">
             <div className="cards">
@@ -706,7 +725,7 @@ function App() {
               <article className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
                 <h3>إحصائيات سريعة</h3>
-                <p>إجمالي الطلاب المسجلين حالياً: <strong>{students.length}</strong> طالب.</p>
+                <p>إجمالي الطلاب المسجلين حالياً: <strong>{activeStudents.length}</strong> طالب.</p>
               </article>
             </div>
           </section>
@@ -805,7 +824,7 @@ function App() {
         ) : activeModule === 'attendance' ? (
           <>
             <AttendancePage
-              students={students}
+              students={activeStudents}
               grades={grades}
               divisions={divisions}
               currentUser={currentUser}
@@ -816,7 +835,7 @@ function App() {
           </>
         ) : activeModule === 'exams' ? (
           <ExamsPage
-            students={students}
+            students={activeStudents}
             grades={grades}
             divisions={divisions}
             currentUser={currentUser}
@@ -834,13 +853,14 @@ function App() {
             currentAcademicYear={currentAcademicYear}
             viewState={resultsViewState}
             setViewState={setResultsViewState}
+            onRefresh={refreshAppData}
           />
         ) : activeModule === 'expenses' ? (
           <ExpensesPage currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
         ) : activeModule === 'fees' ? (
-          <FeesPage students={students} fees={fees} grades={grades} onRefresh={refreshAppData} onViewStudent={handleView} currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
+          <FeesPage students={activeStudents} fees={fees} grades={grades} onRefresh={refreshAppData} onViewStudent={handleView} currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
         ) : activeModule === 'documents' ? (
-          <DocumentsPage students={students} />
+          <DocumentsPage students={activeStudents} />
         ) : activeModule === 'settings' ? (
           <SettingsPage currentUser={currentUser} />
         ) : (
@@ -916,7 +936,7 @@ function App() {
 
         <StudentDirectoryModal
           isOpen={isDirectoryOpen}
-          students={filteredDirectoryStudents || students}
+          students={filteredDirectoryStudents || activeStudents}
           title={directoryTitle}
           onClose={() => setIsDirectoryOpen(false)}
           onView={(student) => {
