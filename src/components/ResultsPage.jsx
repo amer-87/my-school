@@ -3,6 +3,7 @@ import { getFinalResults, promoteStudents } from '../services/databaseApi';
 
 function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
   const [results, setResults] = useState([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   // Normalization helper for Arabic strings
   const normalize = (str) => {
@@ -22,10 +23,14 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
   const setSelectedDivisionId = (val) => setViewState(prev => ({ ...prev, divisionId: val }));
   const setSelectedCourse = (val) => setViewState(prev => ({ ...prev, course: val }));
 
+  const handleSelectDivision = (divId) => {
+    setViewState(prev => ({ ...prev, divisionId: divId, view: 'list' }));
+  };
+
   const [loading, setLoading] = useState(true);
 
   const selectedDivision = useMemo(() =>
-    divisions.find(d => d.id === selectedDivisionId),
+    divisions.find(d => String(d.id) === String(selectedDivisionId)),
     [divisions, selectedDivisionId]
   );
 
@@ -83,11 +88,6 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
       });
   }, [results, selectedDivisionId, selectedCourse]);
 
-  const handleSelectDivision = (divId) => {
-    setSelectedDivisionId(divId);
-    setActiveSubView('list');
-  };
-
   const handlePromote = async () => {
     // Only students who are "Pass" based on scores AND still have "Active" status in DB
     const graduates = filteredResults.filter(r => r.status === 'ناجح' && r.studentStatus === 'نشط');
@@ -102,14 +102,74 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
     }
 
     try {
-      await promoteStudents(graduates.map(g => g.id), currentUser.id, currentAcademicYear);
-      alert('تم ترحيل الطلاب بنجاح للعام القادم.');
-      if (onRefresh) await onRefresh();
-      await loadResults();
+      const result = await promoteStudents(graduates.map(g => g.id), currentUser.id, currentAcademicYear);
+
+      if (result.ok) {
+        alert(`تم ترحيل الطلاب بنجاح إلى العام الدراسي الجديد: ${result.nextYear}.\n\nالطلاب المرحلون سيختفون من قوائم هذا العام وسيظهرون في صفوفهم الجديدة في العام القادم.`);
+        if (onRefresh) await onRefresh();
+        await loadResults();
+      }
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء الترحيل.');
     }
+  };
+
+  const sendWhatsAppResult = (student) => {
+    if (!student.guardianPhone) {
+      alert('رقم هاتف ولي الأمر غير متوفر لهذا الطالب.');
+      return;
+    }
+
+    let message = `*نتائج الطالب:* ${student.fullName}\n`;
+    message += `*العام الدراسي:* ${currentAcademicYear}\n`;
+    message += `*الفترة:* ${selectedCourse}\n\n`;
+
+    student.courseSubjects.forEach(sub => {
+      const scoreStr = sub.score !== null ? `${sub.score}` : '—';
+      message += `- ${sub.name}: ${scoreStr} / ${sub.total}\n`;
+    });
+
+    message += `\n*المجموع:* ${student.totalScore} / ${student.maxPossible}\n`;
+    message += `*المعدل:* ${student.average}%\n`;
+    message += `*النتيجة النهائية:* ${student.status}\n\n`;
+    message += `_مدارس المعلم والكتاب الأهلية_`;
+
+    const url = `https://wa.me/${student.guardianPhone.replace(/\s+/g, '')}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleBulkWhatsApp = () => {
+    const selected = filteredResults.filter(r => selectedStudentIds.includes(r.id));
+    if (selected.length === 0) {
+      alert('يرجى تحديد طالب واحد على الأقل.');
+      return;
+    }
+
+    if (!window.confirm(`سيتم فتح ${selected.length} نافذة واتساب لإرسال النتائج. هل تود الاستمرار؟\n\n(ملاحظة: يرجى السماح بالنوافذ المنبثقة "Pop-ups" في متصفحك إذا لزم الأمر).`)) {
+      return;
+    }
+
+    selected.forEach((student, index) => {
+      // Small delay between opens to help browser manage multiple tabs
+      setTimeout(() => {
+        sendWhatsAppResult(student);
+      }, index * 1200);
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedStudentIds.length === filteredResults.length) {
+      setSelectedStudentIds([]);
+    } else {
+      setSelectedStudentIds(filteredResults.map(r => r.id));
+    }
+  };
+
+  const toggleSelectStudent = (id) => {
+    setSelectedStudentIds(prev =>
+      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+    );
   };
 
   const getScoreColor = (score, total) => {
@@ -188,16 +248,28 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
               className="search-input"
               style={{ minWidth: '180px', padding: '10px 16px' }}
            >
-              <option value="الكورس الأول">الكورس الأول</option>
-              <option value="الكورس الثاني">الكورس الثاني</option>
-              <option value="الكورس الثالث">الكورس الثالث</option>
-              <option value="الكورس الرابع">الكورس الرابع</option>
+              <option value="الشهر الأول">الشهر الأول</option>
+              <option value="الشهر الثاني">الشهر الثاني</option>
+              <option value="الشهر الثالث">الشهر الثالث</option>
+              <option value="الشهر الرابع">الشهر الرابع</option>
+              <option value="نصف السنة">نصف السنة</option>
+              <option value="النهائي">النهائي</option>
            </select>
         </div>
 
         <button className="btn btn-secondary promote-btn" onClick={handlePromote}>
           <span style={{ marginLeft: '8px' }}>🔄</span> ترحيل الناجحين للعام القادم
         </button>
+
+        {selectedStudentIds.length > 0 && (
+          <button
+            className="btn"
+            onClick={handleBulkWhatsApp}
+            style={{ background: '#25d366', color: 'white', fontWeight: '800', borderRadius: '12px', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 211, 102, 0.3)' }}
+          >
+            📱 إرسال النتائج للمحددين ({selectedStudentIds.length})
+          </button>
+        )}
       </div>
 
       <div className="table-card results-table">
@@ -210,6 +282,15 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.length === filteredResults.length && filteredResults.length > 0}
+                      onChange={toggleSelectAll}
+                      style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                    />
+                  </th>
+                  <th style={{ textAlign: 'center' }}>إرسال</th>
                   <th style={{ textAlign: 'center' }}>النتيجة النهائية</th>
                   <th style={{ textAlign: 'center' }}>المجموع</th>
                   <th style={{ textAlign: 'center' }}>المعدل %</th>
@@ -224,7 +305,25 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
               </thead>
               <tbody>
                 {filteredResults.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={row.id} className={selectedStudentIds.includes(row.id) ? 'selected-row' : ''}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(row.id)}
+                        onChange={() => toggleSelectStudent(row.id)}
+                        style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        className="btn-icon"
+                        onClick={() => sendWhatsAppResult(row)}
+                        title="إرسال عبر واتساب"
+                        style={{ background: 'rgba(37, 211, 102, 0.1)', color: '#25d366', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', border: '1px solid rgba(37, 211, 102, 0.2)' }}
+                      >
+                        📱
+                      </button>
+                    </td>
                     <td style={{ textAlign: 'center' }}>
                       <span className={`status-pill ${
                         row.status === 'ناجح' ? 'active' :

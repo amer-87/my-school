@@ -1,6 +1,6 @@
 import React from 'react';
 
-function DashboardPage({ students, teachers, fees, onViewStudent }) {
+function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademicYear }) {
   // Calculate stats
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
@@ -17,6 +17,14 @@ function DashboardPage({ students, teachers, fees, onViewStudent }) {
   return (
     <div className="dashboard-page">
       <div className="stats-grid">
+        <div className="stat-card" style={{ borderRight: '4px solid #2563eb' }}>
+          <div className="stat-icon" style={{ background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb' }}>📅</div>
+          <div className="stat-content">
+            <span className="stat-label">العام الدراسي</span>
+            <span className="stat-value" style={{ fontSize: '24px' }}>{currentAcademicYear}</span>
+          </div>
+        </div>
+
         <div className="stat-card">
           <div className="stat-icon students-icon">👥</div>
           <div className="stat-content">

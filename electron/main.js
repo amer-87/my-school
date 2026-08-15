@@ -89,6 +89,8 @@ ipcMain.handle('db:updateGradeFee', (_, gradeId, amount, currency, userId) => da
 ipcMain.handle('db:applyGradeFeeToAll', (_, gradeId, amount, userId) => databaseService.applyGradeFeeToAll(gradeId, amount, userId));
 ipcMain.handle('db:getLogs', () => databaseService.getLogs());
 ipcMain.handle('db:getAcademicYears', () => databaseService.getAcademicYears());
+ipcMain.handle('db:addAcademicYear', (_, yearName, userId) => databaseService.addAcademicYear(yearName, userId));
+ipcMain.handle('db:setCurrentAcademicYear', (_, yearName, userId) => databaseService.setCurrentAcademicYear(yearName, userId));
 
 ipcMain.handle('db:createBackup', async () => {
   const { canceled, filePath } = await dialog.showSaveDialog({

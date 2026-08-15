@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS students (
     division TEXT,
     division_id INTEGER,
     phone TEXT,
-    guardian_name TEXT,
     address TEXT,
     status TEXT DEFAULT 'نشط',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP

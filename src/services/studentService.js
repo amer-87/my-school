@@ -10,7 +10,6 @@ export function createInitialStudentForm(grades = [], divisions = []) {
     division: '',
     divisionId: '',
     phone: '',
-    guardianName: '',
     address: '',
     status: 'نشط',
   };
@@ -27,7 +26,6 @@ export const initialStudents = [
     grade: 'السابع',
     division: 'أ',
     phone: '0501234567',
-    guardianName: 'محمد علي',
     address: 'الرياض',
     status: 'نشط',
   },
@@ -39,7 +37,6 @@ export const initialStudents = [
     grade: 'الثامن',
     division: 'ب',
     phone: '0507654321',
-    guardianName: 'خالد سالم',
     address: 'جدة',
     status: 'نشط',
   },
@@ -60,7 +57,6 @@ export function buildStudentPayload(formData, id, status = 'نشط') {
     division: formData.division?.trim() || '',
     divisionId: formData.divisionId || null,
     phone: formData.phone.trim(),
-    guardianName: formData.guardianName.trim(),
     address: formData.address.trim(),
     status: status || formData.status || 'نشط',
   };
@@ -70,7 +66,7 @@ export function isDuplicateStudent(students, formData, currentId = null) {
   const normalizedPhone = formData.phone.trim();
   const normalizedName = formData.fullName.trim().toLowerCase();
 
-  if (!normalizedPhone && !normalizedName) {
+  if (!normalizedName) {
     return false;
   }
 
@@ -79,13 +75,14 @@ export function isDuplicateStudent(students, formData, currentId = null) {
       return false;
     }
 
-    const samePhone = student.phone === normalizedPhone && normalizedPhone.length > 0;
-    const sameIdentity =
-      student.fullName.trim().toLowerCase() === normalizedName &&
-      normalizedName.length > 0 &&
-      student.grade === (formData.grade || '').trim() &&
-      student.division === (formData.division || '').trim();
+    const samePhone = normalizedPhone.length > 0 && student.phone === normalizedPhone;
+    const sameName = student.fullName.trim().toLowerCase() === normalizedName;
 
-    return samePhone || sameIdentity;
+    return samePhone || sameName;
   });
+}
+
+export function getNamePartsCount(fullName) {
+  if (!fullName) return 0;
+  return fullName.trim().split(/\s+/).filter(part => part.length > 0).length;
 }

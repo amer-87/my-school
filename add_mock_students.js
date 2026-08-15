@@ -51,7 +51,6 @@ async function run() {
           division: div.name,
           divisionId: div.id,
           phone: getRandomPhone(),
-          guardianName: `${getRandom(firstNames)} ${lastName}`,
           address: getRandom(addresses),
           status: 'نشط'
         };

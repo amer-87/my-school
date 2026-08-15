@@ -5,11 +5,23 @@ import StudentTable from './StudentTable';
 function StudentDirectoryModal({ isOpen, students, title = "دليل الطلاب الشامل", onClose, onView, onEdit, onDelete, onTransfer }) {
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Arabic normalization helper
+  const normalize = (str) => {
+    if (!str) return '';
+    return str
+      .trim()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  };
+
   const filtered = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = normalize(searchTerm);
     if (!term) return students;
+
     return students.filter(s => {
-      const haystack = `${s.fullName} ${s.grade} ${s.division} ${s.phone}`.toLowerCase();
+      const haystack = normalize(`${s.fullName} ${s.grade} ${s.division} ${s.phone}`);
       return haystack.includes(term);
     });
   }, [students, searchTerm]);
@@ -18,7 +30,7 @@ function StudentDirectoryModal({ isOpen, students, title = "دليل الطلا�
 
   return (
     <ModalLayout title={title} isOpen={isOpen} onClose={onClose} className="large">
-      <div className="directory-modal-content">
+      <div className="directory-modal-content" style={{ position: 'relative', zIndex: 1100 }}>
         <StudentTable
           students={filtered}
           onView={onView}

@@ -58,10 +58,6 @@ function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
             <input name="phone" value={formData.phone} onChange={onChange} required />
           </label>
           <label>
-            اسم ولي الأمر
-            <input name="guardianName" value={formData.guardianName} onChange={onChange} required />
-          </label>
-          <label>
             العنوان
             <input name="address" value={formData.address} onChange={onChange} required />
           </label>

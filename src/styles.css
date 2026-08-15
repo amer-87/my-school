@@ -24,6 +24,21 @@ select {
   font: inherit;
 }
 
+select option {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+/* Global select styling for dark theme */
+select {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 8px 12px;
+  border-radius: 10px;
+  outline: none;
+}
+
 #root {
   min-height: 100vh;
 }
@@ -131,7 +146,7 @@ header {
   padding: 9px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(15, 23, 42, 0.9);
+  background: #1e293b;
   color: #f8fafc;
 }
 
@@ -197,11 +212,29 @@ header {
 
 .search-input {
   min-width: 280px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(15, 23, 42, 0.8);
-  color: #f8fafc;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-weight: 700;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.search-input option {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+.search-input::placeholder {
+  color: #64748b;
+  font-weight: 400;
 }
 
 .table-wrapper {
@@ -1402,9 +1435,14 @@ th {
   padding: 10px 16px;
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 12px;
-  background: rgba(0,0,0,0.2);
+  background: #1e293b;
   color: #f8fafc;
   font-weight: 600;
+}
+
+.filter-item select option {
+  background: #1e293b;
+  color: #ffffff;
 }
 
 .conflict-banner {
@@ -1495,7 +1533,7 @@ th {
 
 .cell-teacher-select {
   border: 0;
-  background: rgba(0,0,0,0.3);
+  background: #1e293b;
   border: 1px solid rgba(255,255,255,0.1);
   padding: 4px 6px;
   border-radius: 8px;
@@ -1504,6 +1542,11 @@ th {
   outline: none;
   cursor: pointer;
   width: 100%;
+}
+
+.cell-teacher-select option {
+  background: #1e293b;
+  color: #ffffff;
 }
 
 .schedule-cell-card.has-conflict {

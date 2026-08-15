@@ -29,6 +29,10 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
   const setSelectedCourse = (val) => setViewState(prev => ({ ...prev, course: val }));
   const setSelectedExamIdForResult = (val) => setViewState(prev => ({ ...prev, examIdForResult: val }));
 
+  const handleSelectDivision = (divId) => {
+    setViewState(prev => ({ ...prev, divisionId: divId, view: 'list' }));
+  };
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [mode, setMode] = useState('create');
 
@@ -116,11 +120,6 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
     });
     setErrorMessage('');
     setIsModalOpen(true);
-  };
-
-  const handleSelectDivision = (divId) => {
-    setSelectedDivisionId(divId);
-    setActiveSubSubView('list');
   };
 
   const handleEnterResults = (examId) => {
@@ -266,10 +265,12 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
               className="search-input"
               style={{ minWidth: '180px', padding: '10px 16px' }}
            >
-              <option value="الكورس الأول">الكورس الأول</option>
-              <option value="الكورس الثاني">الكورس الثاني</option>
-              <option value="الكورس الثالث">الكورس الثالث</option>
-              <option value="الكورس الرابع">الكورس الرابع</option>
+              <option value="الشهر الأول">الشهر الأول</option>
+              <option value="الشهر الثاني">الشهر الثاني</option>
+              <option value="الشهر الثالث">الشهر الثالث</option>
+              <option value="الشهر الرابع">الشهر الرابع</option>
+              <option value="نصف السنة">نصف السنة</option>
+              <option value="النهائي">النهائي</option>
            </select>
         </div>
         <div className="module-summary">

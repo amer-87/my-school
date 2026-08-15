@@ -187,13 +187,22 @@ async function getLatestBackupInfo() {
   return electronApi?.getLatestBackupInfo ? electronApi.getLatestBackupInfo() : null;
 }
 
+async function addAcademicYear(yearName, userId) {
+  return electronApi?.addAcademicYear ? electronApi.addAcademicYear(yearName, userId) : { ok: true };
+}
+
+async function setCurrentAcademicYear(yearName, userId) {
+  return electronApi?.setCurrentAcademicYear ? electronApi.setCurrentAcademicYear(yearName, userId) : { ok: true };
+}
+
 export {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears
+  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear
 };
 
 export default {
@@ -202,5 +211,6 @@ export default {
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears
+  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear
 };

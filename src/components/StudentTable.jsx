@@ -8,8 +8,19 @@ function StudentTable({ students, onView, onEdit, onDelete, onTransfer, searchTe
     { key: 'division', label: 'الشعبة' },
     { key: 'phone', label: 'الهاتف' },
     { key: 'status', label: 'الحالة' },
+    { key: 'whatsapp', label: 'إرسال' },
     { key: 'actions', label: 'إجراءات' },
   ];
+
+  const sendWhatsAppMsg = (student) => {
+    if (!student.phone) {
+      alert('رقم الهاتف غير متوفر.');
+      return;
+    }
+    const message = `السلام عليكم، بخصوص الطالب (${student.fullName}). يرجى المتابعة معنا.`;
+    const url = `https://wa.me/${student.phone.replace(/\s+/g, '')}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
 
   return (
     <DataTable
@@ -19,13 +30,28 @@ function StudentTable({ students, onView, onEdit, onDelete, onTransfer, searchTe
       rows={students}
       emptyMessage="لا توجد بيانات للطلاب حتى الآن."
       actions={
-        <input
-          type="search"
-          value={searchTerm}
-          onChange={onSearchChange}
-          placeholder="البحث باسم الطالب أو الصف..."
-          className="search-input"
-        />
+        <div style={{ position: 'relative', minWidth: '300px' }}>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={onSearchChange}
+            onFocus={(e) => e.target.select()}
+            placeholder="🔍 البحث باسم الطالب، الصف، أو الهاتف..."
+            className="search-input"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              border: '2px solid #2563eb',
+              background: '#ffffff',
+              color: '#000000',
+              fontWeight: '700',
+              fontSize: '15px',
+              outline: 'none',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
+            }}
+          />
+        </div>
       }
       renderEmpty={() => (
         <div className="empty-state-card">
@@ -46,9 +72,20 @@ function StudentTable({ students, onView, onEdit, onDelete, onTransfer, searchTe
           <td>{student.division}</td>
           <td>{student.phone}</td>
           <td>
-            <span className={`status-badge ${student.status === 'نشط' ? 'active' : 'inactive'}`}>
+            <span className={`status-badge ${student.status === 'نشط' ? 'active' : (student.status === 'خريج' ? 'active' : 'inactive')}`}>
               {student.status}
             </span>
+          </td>
+          <td>
+             <button
+                type="button"
+                className="btn-icon"
+                onClick={() => sendWhatsAppMsg(student)}
+                title="إرسال واتساب"
+                style={{ background: 'rgba(37, 211, 102, 0.1)', color: '#25d366', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', border: '1px solid rgba(37, 211, 102, 0.2)' }}
+              >
+                📱
+              </button>
           </td>
           <td>
             <div className="action-group">

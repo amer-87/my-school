@@ -160,7 +160,7 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
               <h3 style={{ display: 'inline', marginRight: '8px' }}>أولياء الأمور</h3>
             </div>
             <div className="guardian-box">
-              <div className="guardian-name">{student.guardianName} <span className="relation">(ولي الأمر)</span></div>
+              <div className="guardian-name">{student.fullName.split(' ').slice(1).join(' ')} <span className="relation">(ولي الأمر)</span></div>
               <div className="guardian-phone" style={{ color: '#0071e3', fontWeight: '700' }}>{student.phone}</div>
             </div>
           </div>

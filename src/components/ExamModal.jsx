@@ -51,12 +51,14 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
               </select>
             </label>
             <label>
-              الكورس
-              <select name="course" value={formData.course || 'الكورس الأول'} onChange={onChange} required>
-                <option value="الكورس الأول">الكورس الأول</option>
-                <option value="الكورس الثاني">الكورس الثاني</option>
-                <option value="الكورس الثالث">الكورس الثالث</option>
-                <option value="الكورس الرابع">الكورس الرابع</option>
+              الفترة (الشهر / الامتحان)
+              <select name="course" value={formData.course || 'الشهر الأول'} onChange={onChange} required>
+                <option value="الشهر الأول">الشهر الأول</option>
+                <option value="الشهر الثاني">الشهر الثاني</option>
+                <option value="الشهر الثالث">الشهر الثالث</option>
+                <option value="الشهر الرابع">الشهر الرابع</option>
+                <option value="نصف السنة">نصف السنة</option>
+                <option value="النهائي">النهائي</option>
               </select>
             </label>
             <label>

@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS students (
     division TEXT,
     division_id INTEGER,
     phone TEXT,
-    guardian_name TEXT,
     address TEXT,
     status TEXT DEFAULT 'نشط',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -304,6 +303,29 @@ async function login(username, password) {
 
 async function getLogs() { return all('SELECT l.*, u.full_name as user_name FROM activity_logs l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 200'); }
 async function getAcademicYears() { return all('SELECT * FROM academic_years ORDER BY year_name DESC'); }
+
+async function addAcademicYear(yearName, userId) {
+  const existing = await get('SELECT id FROM academic_years WHERE year_name = ?', [yearName]);
+  if (existing) return { ok: false, message: 'هذا العام الدراسي مسجل مسبقاً' };
+
+  await run('INSERT INTO academic_years (year_name, is_current) VALUES (?, ?)', [yearName, 0]);
+  await logActivity(userId, 'INSERT', 'settings', `إضافة عام دراسي جديد: ${yearName}`);
+  return { ok: true };
+}
+
+async function setCurrentAcademicYear(yearName, userId) {
+  await executescript('BEGIN TRANSACTION');
+  try {
+    await run('UPDATE academic_years SET is_current = 0');
+    await run('UPDATE academic_years SET is_current = 1 WHERE year_name = ?', [yearName]);
+    await logActivity(userId, 'UPDATE', 'settings', `تغيير العام الدراسي النشط إلى: ${yearName}`);
+    await executescript('COMMIT');
+    return { ok: true };
+  } catch (e) {
+    await executescript('ROLLBACK');
+    throw e;
+  }
+}
 async function getUsers() { return all('SELECT id, username, role, full_name, created_at FROM users ORDER BY id DESC'); }
 
 async function createUser(payload, userId) {
@@ -327,7 +349,7 @@ async function updateUserPassword(id, newPassword, userId) {
 }
 
 async function createStudent(payload, userId, academicYear) {
-  const row = await run('INSERT INTO students (full_name, gender, birth_date, grade, grade_id, division, division_id, phone, guardian_name, address, status, academic_year, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [payload.fullName, payload.gender || 'ذكر', payload.dob || '', payload.grade || '', payload.gradeId || null, payload.division || '', payload.divisionId || null, payload.phone || '', payload.guardianName || '', payload.address || '', payload.status || 'نشط', academicYear, userId]);
+  const row = await run('INSERT INTO students (full_name, gender, birth_date, grade, grade_id, division, division_id, phone, address, status, academic_year, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [payload.fullName, payload.gender || 'ذكر', payload.dob || '', payload.grade || '', payload.gradeId || null, payload.division || '', payload.divisionId || null, payload.phone || '', payload.address || '', payload.status || 'نشط', academicYear, userId]);
   const newStudent = { id: row.id, ...payload, academic_year: academicYear };
   await logActivity(userId, 'INSERT', 'students', `إضافة الطالب الجديد: ${payload.fullName}`, null, newStudent);
   return newStudent;
@@ -335,7 +357,7 @@ async function createStudent(payload, userId, academicYear) {
 
 async function updateStudent(id, payload, userId) {
   const oldVal = await get('SELECT * FROM students WHERE id = ?', [id]);
-  await run('UPDATE students SET full_name = ?, gender = ?, birth_date = ?, grade = ?, grade_id = ?, division = ?, division_id = ?, phone = ?, guardian_name = ?, address = ?, status = ?, updated_by = ? WHERE id = ?', [payload.fullName, payload.gender || 'ذكر', payload.dob || '', payload.grade || '', payload.gradeId || null, payload.division || '', payload.divisionId || null, payload.phone || '', payload.guardianName || '', payload.address || '', payload.status || 'نشط', userId, id]);
+  await run('UPDATE students SET full_name = ?, gender = ?, birth_date = ?, grade = ?, grade_id = ?, division = ?, division_id = ?, phone = ?, address = ?, status = ?, updated_by = ? WHERE id = ?', [payload.fullName, payload.gender || 'ذكر', payload.dob || '', payload.grade || '', payload.gradeId || null, payload.division || '', payload.divisionId || null, payload.phone || '', payload.address || '', payload.status || 'نشط', userId, id]);
   const newVal = { id, ...payload };
   await logActivity(userId, 'UPDATE', 'students', `تعديل بيانات الطالب: ${payload.fullName}`, oldVal, newVal);
   return newVal;
@@ -493,7 +515,7 @@ async function getFinalResults(academicYear = null) {
   const yearFilter = academicYear ? ` AND s.academic_year = '${academicYear}'` : '';
   const query = `
     SELECT
-      s.id as student_id, s.full_name, s.grade_id, s.division_id, s.status as student_status,
+      s.id as student_id, s.full_name, s.grade_id, s.division_id, s.status as student_status, s.phone as guardian_phone,
       g.name as grade_name, g.level as grade_level,
       e.subject as subject_name, e.exam_date, e.course as exam_course, er.score, e.total_score
     FROM students s
@@ -513,6 +535,7 @@ async function getFinalResults(academicYear = null) {
         gradeId: row.grade_id,
         divisionId: row.division_id,
         studentStatus: row.student_status,
+        guardianPhone: row.guardian_phone,
         gradeName: row.grade_name,
         gradeLevel: row.grade_level,
         subjects: []
@@ -570,15 +593,20 @@ async function promoteStudents(studentIds, userId, currentYear) {
         const exists = await get('SELECT id FROM students WHERE full_name = ? AND academic_year = ?', [student.full_name, nextYear]);
 
         if (!exists) {
+          // Find the matching division in the next grade.
+          // Search for a division with the same name in the next grade.
+          const nextDiv = await get('SELECT id FROM divisions WHERE name = ? AND grade_id = ? AND is_deleted = 0', [student.division, nextGrade.id]);
+
           await run(`
             INSERT INTO students (
               full_name, gender, birth_date, grade, grade_id,
-              division, division_id, phone, guardian_name, address,
+              division, division_id, phone, address,
               status, academic_year, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
             student.full_name, student.gender, student.birth_date, nextGrade.name, nextGrade.id,
-            student.division, student.division_id, student.phone, student.guardian_name, student.address,
+            student.division, nextDiv ? nextDiv.id : null,
+            student.phone, student.address,
             'نشط', nextYear, userId
           ]);
 
@@ -587,7 +615,7 @@ async function promoteStudents(studentIds, userId, currentYear) {
       }
     }
     await executescript('COMMIT');
-    return { ok: true };
+    return { ok: true, nextYear };
   } catch (error) {
     await executescript('ROLLBACK');
     console.error('Promotion failed:', error);
@@ -752,7 +780,7 @@ async function getExamsStats(academicYear = null) {
   return all(query);
 }
 
-function mapStudentRow(row) { return { id: row.id, fullName: row.full_name, gender: row.gender, dob: row.birth_date, grade: row.grade, gradeId: row.grade_id, division: row.division, divisionId: row.division_id, phone: row.phone, guardianName: row.guardian_name, address: row.address, status: row.status }; }
+function mapStudentRow(row) { return { id: row.id, fullName: row.full_name, gender: row.gender, dob: row.birth_date, grade: row.grade, gradeId: row.grade_id, division: row.division, divisionId: row.division_id, phone: row.phone, address: row.address, status: row.status }; }
 function mapTeacherRow(row) { return { id: row.id, fullName: row.full_name, gender: row.gender, specialty: row.specialty, subject: row.subject, phone: row.phone, address: row.address, status: row.status }; }
 function mapGradeRow(row) { return { id: row.id, name: row.name, level: row.level, annual_fee: row.annual_fee, currency: row.currency || 'عراقي' }; }
 function mapDivisionRow(row) { return { id: row.id, name: row.name, gradeId: row.grade_id, capacity: row.capacity }; }
@@ -766,5 +794,6 @@ module.exports = {
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   saveAttendanceRecords, listAttendanceForDate, getEnrichedAttendance, saveExamResults, getExamResults, getExamsStats, createExam, updateExam, deleteExam, createFeePayment, updateGradeFee, applyGradeFeeToAll, getFees,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  getSchedule, saveFullSchedule, createBackup, restoreBackup, getLatestBackupInfo
+  getSchedule, saveFullSchedule, createBackup, restoreBackup, getLatestBackupInfo,
+  addAcademicYear, setCurrentAcademicYear
 };

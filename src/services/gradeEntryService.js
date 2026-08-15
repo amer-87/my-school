@@ -1,4 +1,4 @@
-export const gradeEntrySubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'التاريخ', 'الجغرافيا', 'الفيزياء', 'الكيمياء', 'الأحياء', 'التربية الإسلامية'];
+export const gradeEntrySubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'الاجتماعيات', 'الأخلاقية', 'الحاسوب', 'جرائم البعث', 'اللغة الكردية', 'الفيزياء', 'الكيمياء', 'الأحياء', 'التربية الإسلامية'];
 
 export function buildGradeRows(students, selectedGradeId, selectedDivisionId, selectedExamId, selectedSubject) {
   return students

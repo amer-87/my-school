@@ -24,7 +24,7 @@ import ResultsPage from './components/ResultsPage';
 import ExpensesPage from './components/ExpensesPage';
 import LoginPage from './components/LoginPage';
 import { createDivisionId, createGradeId, initialDivisions, initialGrades } from './services/classService';
-import { buildStudentPayload, createInitialStudentForm, createStudentId, initialStudentForm, initialStudents, isDuplicateStudent } from './services/studentService';
+import { buildStudentPayload, createInitialStudentForm, createStudentId, getNamePartsCount, initialStudentForm, initialStudents, isDuplicateStudent } from './services/studentService';
 import { buildTeacherPayload, createTeacherId, initialTeacherForm, initialTeachers, isDuplicateTeacher } from './services/teacherService';
 import {
   initializeDatabase,
@@ -113,13 +113,18 @@ function App() {
   const [examsViewState, setExamsViewState] = useState({
     view: 'selection',
     divisionId: null,
-    course: 'الكورس الأول',
+    course: 'الشهر الأول',
     examIdForResult: null
   });
   const [resultsViewState, setResultsViewState] = useState({
     view: 'selection',
     divisionId: null,
-    course: 'الكورس الأول'
+    course: 'الشهر الأول'
+  });
+  const [feesViewState, setFeesViewState] = useState({
+    activeTab: 'overview',
+    searchTerm: '',
+    allEdits: {}
   });
 
   const gradeOrder = {
@@ -151,6 +156,8 @@ function App() {
 
   const handleViewDivisionStudents = (division) => {
     const grade = grades.find(g => g.id === division.gradeId);
+    // Only show ACTIVE students in this division for the selected year
+    // Promoted and Graduated students will "disappear" as requested
     const studentsInDiv = activeStudents.filter(s => s.divisionId === division.id || (s.division === division.name && s.gradeId === division.gradeId));
     setFilteredDirectoryStudents(studentsInDiv);
     setDirectoryTitle(`طلاب شعبة: ${division.name} (${grade?.name || ''})`);
@@ -171,14 +178,25 @@ function App() {
   };
 
   const filteredStudents = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    // Arabic normalization helper
+    const normalize = (str) => {
+      if (!str) return '';
+      return str
+        .trim()
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    };
+
+    const term = normalize(searchTerm);
 
     if (!term) {
       return activeStudents;
     }
 
     return activeStudents.filter((student) => {
-      const haystack = `${student.fullName} ${student.grade} ${student.division} ${student.phone}`.toLowerCase();
+      const haystack = normalize(`${student.fullName} ${student.grade} ${student.division} ${student.phone}`);
       return haystack.includes(term);
     });
   }, [searchTerm, activeStudents]);
@@ -312,7 +330,6 @@ function App() {
       division: matchedDivision?.name || student.division || '',
       divisionId: matchedDivision?.id || student.divisionId || '',
       phone: student.phone,
-      guardianName: student.guardianName,
       address: student.address,
       status: student.status,
     });
@@ -412,8 +429,14 @@ function App() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    const nameParts = getNamePartsCount(formData.fullName);
+    if (nameParts < 3) {
+      setErrorMessage('يرجى إدخال الاسم الثلاثي للطالب على الأقل.');
+      return;
+    }
+
     if (isDuplicateStudent(students, formData, selectedStudentId)) {
-      setErrorMessage('يوجد طالب مشابه بالفعل، يرجى مراجعة البيانات قبل الحفظ.');
+      setErrorMessage('هذا الاسم (أو الهاتف) موجود مسبقاً بالفعل. يرجى إدخال الاسم الرباعي لتمييز الطالب عن السجلات السابقة.');
       return;
     }
 
@@ -664,19 +687,6 @@ function App() {
           ))}
         </nav>
 
-        <div style={{ marginBottom: '20px', padding: '0 10px' }}>
-          <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>العام الدراسي الحالي:</label>
-          <select
-            value={currentAcademicYear}
-            onChange={(e) => setCurrentAcademicYear(e.target.value)}
-            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
-            {academicYears.map(y => (
-              <option key={y.year_name} value={y.year_name}>{y.year_name}</option>
-            ))}
-          </select>
-        </div>
-
         <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
           <button
             className="nav-btn"
@@ -706,7 +716,13 @@ function App() {
             }}
           />
         ) : activeModule === 'dashboard' ? (
-          <DashboardPage students={activeStudents} teachers={teachers} fees={fees} onViewStudent={handleView} />
+          <DashboardPage
+            students={activeStudents}
+            teachers={teachers}
+            fees={fees}
+            onViewStudent={handleView}
+            currentAcademicYear={currentAcademicYear}
+          />
         ) : activeModule === 'students' ? (
           <section className="students-module">
             <div className="cards">
@@ -858,11 +874,33 @@ function App() {
         ) : activeModule === 'expenses' ? (
           <ExpensesPage currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
         ) : activeModule === 'fees' ? (
-          <FeesPage students={activeStudents} fees={fees} grades={grades} onRefresh={refreshAppData} onViewStudent={handleView} currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
+          <FeesPage
+            students={activeStudents}
+            fees={fees}
+            grades={grades}
+            onRefresh={refreshAppData}
+            onViewStudent={handleView}
+            currentUser={currentUser}
+            currentAcademicYear={currentAcademicYear}
+            viewState={feesViewState}
+            setViewState={setFeesViewState}
+          />
         ) : activeModule === 'documents' ? (
           <DocumentsPage students={activeStudents} />
         ) : activeModule === 'settings' ? (
-          <SettingsPage currentUser={currentUser} />
+          <SettingsPage
+            currentUser={currentUser}
+            academicYears={academicYears}
+            currentAcademicYear={currentAcademicYear}
+            onYearChange={async (year) => {
+              await setCurrentAcademicYear(year);
+              await refreshAppData();
+            }}
+            onRefreshYears={async () => {
+              const years = await getAcademicYears();
+              if (Array.isArray(years)) setAcademicYears(years);
+            }}
+          />
         ) : (
           <section className="cards">
             <article className="card">

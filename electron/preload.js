@@ -47,6 +47,8 @@ const electronAPI = {
   createBackup: () => ipcRenderer.invoke('db:createBackup'),
   restoreBackup: () => ipcRenderer.invoke('db:restoreBackup'),
   getLatestBackupInfo: () => ipcRenderer.invoke('db:getLatestBackupInfo'),
+  addAcademicYear: (yearName, userId) => ipcRenderer.invoke('db:addAcademicYear', yearName, userId),
+  setCurrentAcademicYear: (yearName, userId) => ipcRenderer.invoke('db:setCurrentAcademicYear', yearName, userId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

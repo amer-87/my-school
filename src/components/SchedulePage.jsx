@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getSchedule, saveFullSchedule } from '../services/databaseApi';
+import { examSubjects } from '../services/examService';
 
 const DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 const PERIODS = [1, 2, 3, 4, 5, 6];
@@ -52,14 +53,6 @@ function SchedulePage({ grades, divisions, teachers, currentUser, currentAcademi
   const selectedGrade = useMemo(() => {
     return grades.find(g => g.id === Number(selectedGradeId));
   }, [grades, selectedGradeId]);
-
-  const existingSubjects = useMemo(() => {
-    const subjects = new Set();
-    dbSchedule.forEach(s => {
-      if (s.subject_name) subjects.add(s.subject_name);
-    });
-    return Array.from(subjects).sort();
-  }, [dbSchedule]);
 
   const handleLocalChange = (day, period, field, value) => {
     const key = `${day}-${period}`;
@@ -227,19 +220,26 @@ function SchedulePage({ grades, divisions, teachers, currentUser, currentAcademi
                     return (
                       <td key={period}>
                         <div className={`schedule-cell-card ${conflictLocation ? 'has-conflict' : ''}`}>
-                          <input
-                            type="text"
-                            placeholder="المادة"
+                          <select
                             className="cell-subject-input"
-                            list="existing-subjects"
                             value={cell.subject}
                             onChange={(e) => handleLocalChange(day, period, 'subject', e.target.value)}
-                          />
-                          <datalist id="existing-subjects">
-                            {existingSubjects.map(sub => (
-                              <option key={sub} value={sub} />
+                            style={{
+                              background: '#1e293b',
+                              color: '#ffffff',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '8px',
+                              padding: '8px',
+                              width: '100%',
+                              fontWeight: '700'
+                            }}
+                          >
+                            <option value="">-- المادة --</option>
+                            {examSubjects.map(sub => (
+                              <option key={sub} value={sub}>{sub}</option>
                             ))}
-                          </datalist>
+                          </select>
+
                           <select
                             className="cell-teacher-select"
                             value={cell.teacherId}
