@@ -44,6 +44,7 @@ const electronAPI = {
   updateUserPassword: (id, newPassword, userId) => ipcRenderer.invoke('db:updateUserPassword', id, newPassword, userId),
   updateGradeFee: (gradeId, amount, currency, userId) => ipcRenderer.invoke('db:updateGradeFee', gradeId, amount, currency, userId),
   applyGradeFeeToAll: (gradeId, amount, userId) => ipcRenderer.invoke('db:applyGradeFeeToAll', gradeId, amount, userId),
+  updateGradeFeesBulk: (edits, userId) => ipcRenderer.invoke('db:updateGradeFeesBulk', edits, userId),
   createBackup: () => ipcRenderer.invoke('db:createBackup'),
   restoreBackup: () => ipcRenderer.invoke('db:restoreBackup'),
   getLatestBackupInfo: () => ipcRenderer.invoke('db:getLatestBackupInfo'),

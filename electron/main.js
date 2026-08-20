@@ -87,6 +87,7 @@ ipcMain.handle('db:deleteUser', (_, id, userId) => databaseService.deleteUser(id
 ipcMain.handle('db:updateUserPassword', (_, id, newPassword, userId) => databaseService.updateUserPassword(id, newPassword, userId));
 ipcMain.handle('db:updateGradeFee', (_, gradeId, amount, currency, userId) => databaseService.updateGradeFee(gradeId, amount, currency, userId));
 ipcMain.handle('db:applyGradeFeeToAll', (_, gradeId, amount, userId) => databaseService.applyGradeFeeToAll(gradeId, amount, userId));
+ipcMain.handle('db:updateGradeFeesBulk', (_, edits, userId) => databaseService.updateGradeFeesBulk(edits, userId));
 ipcMain.handle('db:getLogs', () => databaseService.getLogs());
 ipcMain.handle('db:getAcademicYears', () => databaseService.getAcademicYears());
 ipcMain.handle('db:addAcademicYear', (_, yearName, userId) => databaseService.addAcademicYear(yearName, userId));

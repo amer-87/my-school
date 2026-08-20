@@ -175,6 +175,10 @@ async function applyGradeFeeToAll(gradeId, amount, userId) {
   return electronApi?.applyGradeFeeToAll ? electronApi.applyGradeFeeToAll(gradeId, amount, userId) : { ok: true };
 }
 
+async function updateGradeFeesBulk(edits, userId) {
+  return electronApi?.updateGradeFeesBulk ? electronApi.updateGradeFeesBulk(edits, userId) : { ok: true };
+}
+
 async function createBackup() {
   return electronApi?.createBackup ? electronApi.createBackup() : { ok: true, skipped: true };
 }
@@ -201,7 +205,7 @@ export {
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear
 };
 
@@ -211,6 +215,6 @@ export default {
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear
 };

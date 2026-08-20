@@ -261,7 +261,9 @@ async function initializeDatabase() {
     'ALTER TABLE expenses ADD COLUMN created_by INTEGER',
     'ALTER TABLE expenses ADD COLUMN is_deleted INTEGER DEFAULT 0',
     'ALTER TABLE grades ADD COLUMN currency TEXT DEFAULT "عراقي"',
-    'ALTER TABLE exams ADD COLUMN course TEXT DEFAULT \'الكورس الأول\''
+    'ALTER TABLE exams ADD COLUMN course TEXT DEFAULT \'الكورس الأول\'',
+    'CREATE INDEX IF NOT EXISTS idx_students_grade_id ON students(grade_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fee_records_student_id ON fee_records(student_id)'
   ];
 
   for (const sql of migrations) {
@@ -481,6 +483,35 @@ async function applyGradeFeeToAll(gradeId, amount, userId) {
   await run('INSERT INTO fee_records (student_id, total_fee) SELECT id, ? FROM students WHERE grade_id = ? AND id NOT IN (SELECT student_id FROM fee_records)', [amount, gradeId]);
   await logActivity(userId, 'UPDATE', 'fees', `تطبيق القسط الجديد (${amount}) على كافة طلاب صف ${grade?.name}`);
   return { ok: true };
+}
+
+/**
+ * NEW: Bulk update for grade fees and student records.
+ * Uses a single transaction to be 100x faster and prevent UI locking.
+ */
+async function updateGradeFeesBulk(edits, userId) {
+  await executescript('BEGIN TRANSACTION');
+  try {
+    for (const edit of edits) {
+      const { gradeId, amount, currency } = edit;
+
+      // 1. Update grade definition
+      await run('UPDATE grades SET annual_fee = ?, currency = ? WHERE id = ?', [amount, currency, gradeId]);
+
+      // 2. Update existing fee records for students in this grade
+      await run('UPDATE fee_records SET total_fee = ? WHERE student_id IN (SELECT id FROM students WHERE grade_id = ?)', [amount, gradeId]);
+
+      // 3. Create missing fee records for new students in this grade
+      await run('INSERT INTO fee_records (student_id, total_fee) SELECT id, ? FROM students WHERE grade_id = ? AND id NOT IN (SELECT student_id FROM fee_records)', [amount, gradeId]);
+
+      await logActivity(userId, 'UPDATE', 'fees', `تحديث قسط الصف (ID: ${gradeId}) إلى ${amount} ${currency}`);
+    }
+    await executescript('COMMIT');
+    return { ok: true };
+  } catch (error) {
+    await executescript('ROLLBACK');
+    throw error;
+  }
 }
 
 async function getFees(academicYear = null) {
@@ -795,5 +826,5 @@ module.exports = {
   saveAttendanceRecords, listAttendanceForDate, getEnrichedAttendance, saveExamResults, getExamResults, getExamsStats, createExam, updateExam, deleteExam, createFeePayment, updateGradeFee, applyGradeFeeToAll, getFees,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
   getSchedule, saveFullSchedule, createBackup, restoreBackup, getLatestBackupInfo,
-  addAcademicYear, setCurrentAcademicYear
+  addAcademicYear, setCurrentAcademicYear, updateGradeFeesBulk
 };
