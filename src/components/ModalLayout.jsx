@@ -1,21 +1,19 @@
-function ModalLayout({ title, isOpen, onClose, children, footer, className = '' }) {
+function ModalLayout({ title, isOpen, onClose, children, footer }) {
   if (!isOpen) return null;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className={`modal-card ${className}`}>
+      <div className="modal-card">
         <div className="modal-header">
           <h3>{title}</h3>
-          <button type="button" className="icon-btn" onClick={onClose} title="إغلاق">
+          <button type="button" className="icon-btn" onClick={onClose}>
             ×
           </button>
         </div>
 
-        <div className="modal-body">
-          {children}
-        </div>
+        {children}
 
-        {footer ? <div className="modal-actions" style={{ padding: '0 20px 20px' }}>{footer}</div> : null}
+        {footer ? <div className="modal-actions">{footer}</div> : null}
       </div>
     </div>
   );

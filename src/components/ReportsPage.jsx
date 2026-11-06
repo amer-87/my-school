@@ -223,7 +223,6 @@ function ReportsPage({ students }) {
             <table>
               <thead>
                 <tr>
-                  <th>رقم</th>
                   <th>اسم الطالب</th>
                   <th>الصف</th>
                   <th>الشعبة</th>
@@ -232,9 +231,8 @@ function ReportsPage({ students }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((student, index) => (
+                {filteredStudents.map((student) => (
                   <tr key={student.id}>
-                    <td>{index + 1}</td>
                     <td>{student.fullName}</td>
                     <td>{student.grade}</td>
                     <td>{student.division}</td>
@@ -250,7 +248,6 @@ function ReportsPage({ students }) {
             <table>
               <thead>
                 <tr>
-                  <th>رقم</th>
                   <th>اسم الطالب</th>
                   <th>الحالة</th>
                   <th>التاريخ</th>
@@ -259,7 +256,6 @@ function ReportsPage({ students }) {
               <tbody>
                 {filteredAttendance.map((item, index) => (
                   <tr key={`${item.studentId}-${item.date}-${index}`}>
-                    <td>{index + 1}</td>
                     <td>{item.studentName}</td>
                     <td>{item.status}</td>
                     <td>{item.date}</td>
@@ -277,7 +273,6 @@ function ReportsPage({ students }) {
             <table>
               <thead>
                 <tr>
-                  <th>رقم</th>
                   <th>اسم الطالب</th>
                   <th>المادة</th>
                   <th>الدرجة</th>
@@ -287,7 +282,6 @@ function ReportsPage({ students }) {
               <tbody>
                 {filteredGrades.map((item, index) => (
                   <tr key={`${item.studentId}-${item.subject}-${index}`}>
-                    <td>{index + 1}</td>
                     <td>{item.studentName}</td>
                     <td>{item.subject}</td>
                     <td>{item.score}</td>
@@ -302,7 +296,6 @@ function ReportsPage({ students }) {
             <table>
               <thead>
                 <tr>
-                  <th>رقم</th>
                   <th>اسم الطالب</th>
                   <th>الإجمالي</th>
                   <th>المدفوع</th>
@@ -311,9 +304,8 @@ function ReportsPage({ students }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredFees.map((item, index) => (
+                {filteredFees.map((item) => (
                   <tr key={item.studentId}>
-                    <td>{index + 1}</td>
                     <td>{item.studentName}</td>
                     <td>{item.total}</td>
                     <td>{item.paid}</td>

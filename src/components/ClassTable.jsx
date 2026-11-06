@@ -1,4 +1,4 @@
-function ClassTable({ title, items, onEdit, onDelete, onSelect, onView, selectedId, emptyMessage }) {
+function ClassTable({ title, items, onEdit, onDelete, emptyMessage }) {
   return (
     <section className="table-card">
       <div className="table-toolbar">
@@ -24,52 +24,17 @@ function ClassTable({ title, items, onEdit, onDelete, onSelect, onView, selected
               </tr>
             </thead>
             <tbody>
-              {items.map((item, index) => (
-                <tr
-                  key={item.id}
-                  onClick={() => onSelect && onSelect(item.id)}
-                  className={selectedId === item.id ? 'selected-row clickable-row' : 'clickable-row'}
-                >
-                  <td>{index + 1}</td>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
                   <td>{item.name}</td>
                   <td>{item.level || item.gradeName || ''}</td>
                   <td>
                     <div className="action-group">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '6px' }}>
-                          {item.studentCount || 0} طالب
-                        </span>
-                        {onView && (
-                          <button
-                            type="button"
-                            className="table-action view"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onView(item);
-                            }}
-                          >
-                            عرض
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="table-action edit"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(item);
-                        }}
-                      >
+                      <button type="button" className="table-action edit" onClick={() => onEdit(item)}>
                         تعديل
                       </button>
-                      <button
-                        type="button"
-                        className="table-action delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(item.id);
-                        }}
-                      >
+                      <button type="button" className="table-action delete" onClick={() => onDelete(item.id)}>
                         حذف
                       </button>
                     </div>

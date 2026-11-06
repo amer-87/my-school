@@ -21,7 +21,7 @@ function DataTable({ title, subtitle, columns, rows, emptyMessage, renderRow, re
                 ))}
               </tr>
             </thead>
-            <tbody>{rows.map((row, index) => renderRow(row, index))}</tbody>
+            <tbody>{rows.map((row) => renderRow(row))}</tbody>
           </table>
         )}
       </div>

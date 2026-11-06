@@ -1,5 +1,5 @@
-export const teacherSpecialties = ['رياضيات', 'علوم', 'لغة عربية', 'لغة إنجليزية', 'اجتماعيات', 'أخلاقية', 'حاسوب', 'جرائم البعث', 'لغة كردية', 'فيزياء', 'كيمياء', 'أحياء', 'تربية إسلامية'];
-export const teacherSubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'الاجتماعيات', 'الأخلاقية', 'الحاسوب', 'جرائم البعث', 'اللغة الكردية', 'الفيزياء', 'الكيمياء', 'الأحياء', 'التربية الإسلامية'];
+export const teacherSpecialties = ['رياضيات', 'علوم', 'لغة عربية', 'لغة إنجليزية', 'تاريخ', 'جغرافيا', 'فيزياء', 'كيمياء', 'أحياء', 'تربية إسلامية'];
+export const teacherSubjects = ['الرياضيات', 'العلوم', 'اللغة العربية', 'اللغة الإنجليزية', 'التاريخ', 'الجغرافيا', 'الفيزياء', 'الكيمياء', 'الأحياء', 'التربية الإسلامية'];
 export const teacherStatusOptions = ['نشط', 'إجازة', 'متقاعد'];
 
 export const initialTeacherForm = {
@@ -8,6 +8,7 @@ export const initialTeacherForm = {
   specialty: teacherSpecialties[0],
   subject: teacherSubjects[0],
   phone: '',
+  email: '',
   address: '',
   status: 'نشط',
 };
@@ -20,6 +21,7 @@ export const initialTeachers = [
     specialty: 'رياضيات',
     subject: 'الرياضيات',
     phone: '0551234567',
+    email: 'mohammed@example.com',
     address: 'الرياض',
     status: 'نشط',
   },
@@ -30,6 +32,7 @@ export const initialTeachers = [
     specialty: 'لغة عربية',
     subject: 'اللغة العربية',
     phone: '0557654321',
+    email: 'salma@example.com',
     address: 'جدة',
     status: 'إجازة',
   },
@@ -47,6 +50,7 @@ export function buildTeacherPayload(formData, id) {
     specialty: formData.specialty,
     subject: formData.subject,
     phone: formData.phone.trim(),
+    email: formData.email.trim(),
     address: formData.address.trim(),
     status: formData.status,
   };
@@ -54,14 +58,16 @@ export function buildTeacherPayload(formData, id) {
 
 export function isDuplicateTeacher(teachers, formData, currentId = null) {
   const normalizedPhone = formData.phone.trim();
+  const normalizedEmail = formData.email.trim().toLowerCase();
   const normalizedName = formData.fullName.trim().toLowerCase();
 
   return teachers.some((teacher) => {
     if (teacher.id === currentId) return false;
 
     const samePhone = teacher.phone === normalizedPhone && normalizedPhone.length > 0;
+    const sameEmail = teacher.email.toLowerCase() === normalizedEmail && normalizedEmail.length > 0;
     const sameIdentity = teacher.fullName.trim().toLowerCase() === normalizedName && normalizedName.length > 0;
 
-    return samePhone || sameIdentity;
+    return samePhone || sameEmail || sameIdentity;
   });
 }

@@ -1,15 +1,21 @@
+export const gradeOptions = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن', 'التاسع', 'العاشر', 'الحادي عشر', 'الثاني عشر'];
+export const divisionOptions = ['أ', 'ب', 'ج', 'د', 'هـ'];
 export const studentStatusOptions = ['نشط', 'منقول', 'موقوف', 'متخرج'];
 
 export function createInitialStudentForm(grades = [], divisions = []) {
+  const firstGrade = grades[0];
+  const firstDivision = divisions.find((division) => division.gradeId === firstGrade?.id) || divisions[0];
+
   return {
     fullName: '',
     gender: 'ذكر',
     dob: '',
-    grade: '',
-    gradeId: '',
-    division: '',
-    divisionId: '',
+    grade: firstGrade?.name || gradeOptions[0],
+    gradeId: firstGrade?.id || '',
+    division: firstDivision?.name || divisionOptions[0],
+    divisionId: firstDivision?.id || '',
     phone: '',
+    guardianName: '',
     address: '',
     status: 'نشط',
   };
@@ -26,6 +32,7 @@ export const initialStudents = [
     grade: 'السابع',
     division: 'أ',
     phone: '0501234567',
+    guardianName: 'محمد علي',
     address: 'الرياض',
     status: 'نشط',
   },
@@ -37,6 +44,7 @@ export const initialStudents = [
     grade: 'الثامن',
     division: 'ب',
     phone: '0507654321',
+    guardianName: 'خالد سالم',
     address: 'جدة',
     status: 'نشط',
   },
@@ -57,6 +65,7 @@ export function buildStudentPayload(formData, id, status = 'نشط') {
     division: formData.division?.trim() || '',
     divisionId: formData.divisionId || null,
     phone: formData.phone.trim(),
+    guardianName: formData.guardianName.trim(),
     address: formData.address.trim(),
     status: status || formData.status || 'نشط',
   };
@@ -66,7 +75,7 @@ export function isDuplicateStudent(students, formData, currentId = null) {
   const normalizedPhone = formData.phone.trim();
   const normalizedName = formData.fullName.trim().toLowerCase();
 
-  if (!normalizedName) {
+  if (!normalizedPhone && !normalizedName) {
     return false;
   }
 
@@ -75,14 +84,13 @@ export function isDuplicateStudent(students, formData, currentId = null) {
       return false;
     }
 
-    const samePhone = normalizedPhone.length > 0 && student.phone === normalizedPhone;
-    const sameName = student.fullName.trim().toLowerCase() === normalizedName;
+    const samePhone = student.phone === normalizedPhone && normalizedPhone.length > 0;
+    const sameIdentity =
+      student.fullName.trim().toLowerCase() === normalizedName &&
+      normalizedName.length > 0 &&
+      student.grade === (formData.grade || '').trim() &&
+      student.division === (formData.division || '').trim();
 
-    return samePhone || sameName;
+    return samePhone || sameIdentity;
   });
-}
-
-export function getNamePartsCount(fullName) {
-  if (!fullName) return 0;
-  return fullName.trim().split(/\s+/).filter(part => part.length > 0).length;
 }
