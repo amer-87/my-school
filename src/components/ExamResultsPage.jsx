@@ -65,6 +65,11 @@ const ResultRow = React.memo(({ row, index, totalScore, onUpdate }) => {
             </div>
           )}
         </div>
+        {row.editedBy && (
+          <div style={{ marginTop: '6px', color: '#94a3b8', fontSize: '11px' }}>
+            آخر تعديل بواسطة: {row.editedBy}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -101,7 +106,8 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
         return {
           studentId: student.id,
           studentName: student.fullName,
-          score: (existing && existing.score !== null && existing.score !== undefined) ? String(existing.score) : ''
+          score: (existing && existing.score !== null && existing.score !== undefined) ? String(existing.score) : '',
+          editedBy: existing?.edited_by || '',
         };
       });
 
@@ -152,6 +158,10 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
     setMessage('');
     try {
       await saveExamResults(selectedExam.id, rows, currentUser.id, currentAcademicYear);
+      setRows((current) => current.map((row) => ({
+        ...row,
+        editedBy: row.score !== '' ? currentUser.full_name : row.editedBy,
+      })));
 
       if (onSuccess) {
         onSuccess();

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getFinalResults, promoteStudents } from '../services/databaseApi';
+import { getIraqiWhatsAppNumber, getSchoolWhatsAppSignature } from '../services/studentService';
 
-function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
+function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
   const [results, setResults] = useState([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
@@ -132,10 +133,16 @@ function ResultsPage({ grades, divisions, currentUser, currentAcademicYear, view
 
     message += `\n*المجموع:* ${student.totalScore} / ${student.maxPossible}\n`;
     message += `*المعدل:* ${student.average}%\n`;
-    message += `*النتيجة النهائية:* ${student.status}\n\n`;
-    message += `_مدارس المعلم والكتاب الأهلية_`;
+    message += `*النتيجة النهائية:* ${student.status}`;
+    message += getSchoolWhatsAppSignature(schoolSettings);
 
-    const url = `https://wa.me/${student.guardianPhone.replace(/\s+/g, '')}?text=${encodeURIComponent(message)}`;
+    const phone = getIraqiWhatsAppNumber(student.guardianPhone);
+    if (!phone) {
+      alert('رقم هاتف ولي الأمر غير صالح.');
+      return;
+    }
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 

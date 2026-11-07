@@ -4,7 +4,6 @@ import ClassTable from './components/ClassTable';
 import ExamsPage from './components/ExamsPage';
 import FeesPage from './components/FeesPage';
 import GradesPage from './components/GradesPage';
-import DocumentsPage from './components/DocumentsPage';
 import DivisionModal from './components/DivisionModal';
 import GradeModal from './components/GradeModal';
 import StudentDirectoryModal from './components/StudentDirectoryModal';
@@ -23,8 +22,9 @@ import SchedulePage from './components/SchedulePage';
 import ResultsPage from './components/ResultsPage';
 import ExpensesPage from './components/ExpensesPage';
 import LoginPage from './components/LoginPage';
+import UserManagement from './components/UserManagement';
 import { createDivisionId, createGradeId, initialDivisions, initialGrades } from './services/classService';
-import { buildStudentPayload, createInitialStudentForm, createStudentId, getNamePartsCount, initialStudentForm, initialStudents, isDuplicateStudent } from './services/studentService';
+import { buildStudentPayload, createInitialStudentForm, createStudentId, getIraqiLocalPhone, getNamePartsCount, initialStudentForm, initialStudents, isDuplicateStudent } from './services/studentService';
 import { buildTeacherPayload, createTeacherId, initialTeacherForm, initialTeachers, isDuplicateTeacher } from './services/teacherService';
 import {
   initializeDatabase,
@@ -42,7 +42,9 @@ import {
   updateDivision,
   deleteDivision,
   getAcademicYears,
-  getLogs
+  getLogs,
+  getSchoolSettings,
+  validateUserSession,
 } from './services/databaseApi';
 
 const modules = [
@@ -56,13 +58,14 @@ const modules = [
   { key: 'results', title: 'النتائج والترحيل', description: 'إدخال الدرجات النهائية وترحيل الطلاب الناجحين للعام القادم' },
   { key: 'expenses', title: 'الصرفيات', description: 'سجل المشتريات ومصاريف التشغيل للمدرسة' },
   { key: 'fees', title: 'الرسوم والاقساط', description: 'إدارة الرسوم ومتابعة المدفوعات' },
-  { key: 'documents', title: 'الشهادات والهويات', description: 'إصدار الشهادات التقديرية وطباعة هويات الطلاب' },
   { key: 'settings', title: 'الإعدادات والنسخ', description: 'إدارة النسخ الاحتياطي واستعادة البيانات' },
+  { key: 'account', title: 'حسابي', description: 'تغيير كلمة المرور الخاصة بحسابك' },
 ];
 
 function App() {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState(null);
+  const [loginMessage, setLoginMessage] = useState('');
   const [students, setStudents] = useState(initialStudents);
   const [teachers, setTeachers] = useState(initialTeachers);
   const [grades, setGrades] = useState(initialGrades);
@@ -83,6 +86,10 @@ function App() {
   const [viewingStudentId, setViewingStudentId] = useState(null);
   const [currentAcademicYear, setCurrentAcademicYear] = useState('2026-2027');
   const [academicYears, setAcademicYears] = useState([]);
+  const [schoolSettings, setSchoolSettings] = useState({
+    schoolName: 'مدارس المعلم والكتاب الأهلية',
+    whatsappPhone: '',
+  });
   const [teacherDetailsModalOpen, setTeacherDetailsModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
@@ -256,7 +263,8 @@ function App() {
     const bootstrap = async () => {
       try {
         await initializeDatabase();
-        const years = await getAcademicYears();
+        const [years, settings] = await Promise.all([getAcademicYears(), getSchoolSettings()]);
+        setSchoolSettings(settings);
         const yearsList = Array.isArray(years) ? years : [];
         setAcademicYears(yearsList);
 
@@ -282,6 +290,32 @@ function App() {
       refreshAppData();
     }
   }, [currentAcademicYear]);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    let checking = false;
+    const checkSession = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const result = await validateUserSession(currentUser.id);
+        if (!result?.ok) {
+          setCurrentUser(null);
+          setActiveModule('dashboard');
+          setViewingStudentId(null);
+          setLoginMessage('تم إيقاف هذا الحساب من قبل مدير المدرسة.');
+        } else if (result.user.role !== currentUser.role) {
+          setCurrentUser(result.user);
+        }
+      } catch (error) {
+        console.error('Failed to validate current user session', error);
+      } finally {
+        checking = false;
+      }
+    };
+    const intervalId = window.setInterval(checkSession, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [currentUser?.id, currentUser?.role]);
 
   const openCreateModal = () => {
     setMode('create');
@@ -329,7 +363,7 @@ function App() {
       gradeId: matchedGrade?.id || student.gradeId || '',
       division: matchedDivision?.name || student.division || '',
       divisionId: matchedDivision?.id || student.divisionId || '',
-      phone: student.phone,
+      phone: getIraqiLocalPhone(student.phone),
       address: student.address,
       status: student.status,
     });
@@ -660,11 +694,23 @@ function App() {
 
   const visibleModules = useMemo(() => {
     if (currentUser?.role === 'admin') return modules;
-    return modules.filter(m => !['settings', 'reports', 'logs'].includes(m.key));
+    const allowedModules = currentUser?.role === 'accounting_employee'
+      ? ['fees', 'account']
+      : ['students', 'teachers', 'attendance', 'exams', 'results', 'account'];
+    return modules.filter((module) => allowedModules.includes(module.key));
   }, [currentUser]);
 
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setLoginMessage('');
+    if (user.role === 'accounting_employee') setActiveModule('fees');
+    else if (user.role === 'administrative_employee') setActiveModule('students');
+    else setActiveModule('dashboard');
+    setViewingStudentId(null);
+  };
+
   if (!currentUser) {
-    return <LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+    return <LoginPage onLoginSuccess={handleLoginSuccess} initialMessage={loginMessage} />;
   }
 
   return (
@@ -691,7 +737,12 @@ function App() {
           <button
             className="nav-btn"
             style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-            onClick={() => setCurrentUser(null)}
+            onClick={() => {
+              setCurrentUser(null);
+              setActiveModule('dashboard');
+              setViewingStudentId(null);
+              setLoginMessage('');
+            }}
           >
             ↩️ تسجيل الخروج
           </button>
@@ -710,6 +761,7 @@ function App() {
             feeRecord={fees.find(f => f.studentId === viewingStudentId)}
             attendanceRecords={attendance.filter(a => a.studentId === viewingStudentId)}
             onBack={() => setViewingStudentId(null)}
+            canViewFinancials={['admin', 'accounting_employee'].includes(currentUser.role)}
             onEdit={(student) => {
               setViewingStudentId(null);
               openEditModal(student);
@@ -865,6 +917,7 @@ function App() {
           <ResultsPage
             grades={grades}
             divisions={divisions}
+            schoolSettings={schoolSettings}
             currentUser={currentUser}
             currentAcademicYear={currentAcademicYear}
             viewState={resultsViewState}
@@ -878,6 +931,8 @@ function App() {
             students={activeStudents}
             fees={fees}
             grades={grades}
+            divisions={divisions}
+            schoolSettings={schoolSettings}
             onRefresh={refreshAppData}
             onViewStudent={handleView}
             currentUser={currentUser}
@@ -885,13 +940,12 @@ function App() {
             viewState={feesViewState}
             setViewState={setFeesViewState}
           />
-        ) : activeModule === 'documents' ? (
-          <DocumentsPage students={activeStudents} />
         ) : activeModule === 'settings' ? (
           <SettingsPage
             currentUser={currentUser}
             academicYears={academicYears}
             currentAcademicYear={currentAcademicYear}
+            onSchoolSettingsChange={setSchoolSettings}
             onYearChange={async (year) => {
               await setCurrentAcademicYear(year);
               await refreshAppData();
@@ -901,6 +955,8 @@ function App() {
               if (Array.isArray(years)) setAcademicYears(years);
             }}
           />
+        ) : activeModule === 'account' ? (
+          <UserManagement currentUser={currentUser} isAdmin={false} />
         ) : (
           <section className="cards">
             <article className="card">

@@ -1,5 +1,38 @@
 export const studentStatusOptions = ['نشط', 'منقول', 'موقوف', 'متخرج'];
 
+function getPhoneDigits(phone) {
+  return String(phone || '')
+    .replace(/[٠-٩۰-۹]/g, (digit) => {
+      const codePoint = digit.codePointAt(0);
+      return String(codePoint - (codePoint >= 0x06f0 ? 0x06f0 : 0x0660));
+    })
+    .replace(/\D/g, '');
+}
+
+export function getIraqiLocalPhone(phone) {
+  let digits = getPhoneDigits(phone);
+  if (digits.startsWith('00964')) digits = digits.slice(5);
+  else if (digits.startsWith('964')) digits = digits.slice(3);
+  else if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+}
+
+export function getIraqiWhatsAppNumber(phone) {
+  const localPhone = getIraqiLocalPhone(phone);
+  return localPhone ? `964${localPhone}` : '';
+}
+
+export function getSchoolWhatsAppSignature(settings) {
+  const signature = [];
+  const schoolName = String(settings?.schoolName || '').trim();
+  const whatsappPhone = getIraqiWhatsAppNumber(settings?.whatsappPhone);
+
+  if (schoolName) signature.push(schoolName);
+  if (whatsappPhone) signature.push(`واتساب المدرسة: +${whatsappPhone}`);
+
+  return signature.length ? `\n\n${signature.join('\n')}` : '';
+}
+
 export function createInitialStudentForm(grades = [], divisions = []) {
   return {
     fullName: '',
@@ -56,14 +89,14 @@ export function buildStudentPayload(formData, id, status = 'نشط') {
     gradeId: formData.gradeId || null,
     division: formData.division?.trim() || '',
     divisionId: formData.divisionId || null,
-    phone: formData.phone.trim(),
+    phone: getIraqiWhatsAppNumber(formData.phone),
     address: formData.address.trim(),
     status: status || formData.status || 'نشط',
   };
 }
 
 export function isDuplicateStudent(students, formData, currentId = null) {
-  const normalizedPhone = formData.phone.trim();
+  const normalizedPhone = getIraqiWhatsAppNumber(formData.phone);
   const normalizedName = formData.fullName.trim().toLowerCase();
 
   if (!normalizedName) {
@@ -75,7 +108,7 @@ export function isDuplicateStudent(students, formData, currentId = null) {
       return false;
     }
 
-    const samePhone = normalizedPhone.length > 0 && student.phone === normalizedPhone;
+    const samePhone = normalizedPhone.length > 0 && getIraqiWhatsAppNumber(student.phone) === normalizedPhone;
     const sameName = student.fullName.trim().toLowerCase() === normalizedName;
 
     return samePhone || sameName;

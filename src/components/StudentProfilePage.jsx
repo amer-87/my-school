@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { getLogs } from '../services/databaseApi';
 
-function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onEdit }) {
+function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onEdit, canViewFinancials = true }) {
   const [logs, setLogs] = React.useState([]);
 
   React.useEffect(() => {
@@ -76,8 +76,7 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
       <div className="profile-grid">
         {/* Left Column */}
         <div className="profile-col main-col">
-          {/* Fees Section */}
-          <div className="profile-section card">
+          {canViewFinancials && <div className="profile-section card">
             <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
               <span style={{ fontSize: '20px' }}>📑</span>
               <h3 style={{ margin: 0 }}>الأقساط الدراسية</h3>
@@ -108,7 +107,7 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
                   <div className="inst-status"><span className="check-icon mini">✓</span> <span className="status-text">مسدد</span></div>
                   <span className="inst-date" style={{ color: '#64748b' }}>{p.date}</span>
                   <span className="inst-amount" style={{ fontWeight: '700' }}>{formatCurrency(p.amount, feeRecord?.currency)}</span>
-                  <span className="inst-check">🟢</span>
+                  <span className="inst-check" title={`استلمها: ${p.receivedBy || 'غير مسجل'}`}>{p.receivedBy ? `استلمها: ${p.receivedBy}` : '🟢'}</span>
                 </div>
               ))}
               {feeRecord?.remaining > 0 && (
@@ -120,7 +119,7 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
                 </div>
               )}
             </div>
-          </div>
+          </div>}
 
           <div className="bottom-grid">
              {/* Transport Section */}

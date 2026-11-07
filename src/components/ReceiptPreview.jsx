@@ -46,6 +46,7 @@ function ReceiptPreview({ receiptData, onBack }) {
           <div className="receipt-meta">
             <span>التاريخ: {receiptData.payment?.date}</span>
             <span>رقم الوصل: {receiptId}</span>
+            <span>استلم الدفعة: {receiptData.payment?.receivedBy || 'غير مسجل'}</span>
           </div>
 
           <div className="barcode-area">

@@ -28,6 +28,9 @@ const electronAPI = {
   saveAttendanceRecords: (date, rows, userId, academicYear) => ipcRenderer.invoke('db:saveAttendanceRecords', date, rows, userId, academicYear),
   createFeePayment: (studentId, payload, userId, academicYear) => ipcRenderer.invoke('db:createFeePayment', studentId, payload, userId, academicYear),
   getFees: (academicYear) => ipcRenderer.invoke('db:getFees', academicYear),
+  generateTuitionInstallments: (firstDueDate, academicYear, userId) => ipcRenderer.invoke('db:generateTuitionInstallments', firstDueDate, academicYear, userId),
+  getTuitionExpenses: (academicYear) => ipcRenderer.invoke('db:getTuitionExpenses', academicYear),
+  createTuitionExpense: (payload, userId, academicYear) => ipcRenderer.invoke('db:createTuitionExpense', payload, userId, academicYear),
   createCertificate: (payload) => ipcRenderer.invoke('db:createCertificate', payload),
   getSchedule: () => ipcRenderer.invoke('db:getSchedule'),
   saveScheduleCell: (payload) => ipcRenderer.invoke('db:saveScheduleCell', payload),
@@ -38,10 +41,12 @@ const electronAPI = {
   createExpense: (payload, userId, academicYear) => ipcRenderer.invoke('db:createExpense', payload, userId, academicYear),
   updateExpenseStatus: (id, status, userId) => ipcRenderer.invoke('db:updateExpenseStatus', id, status, userId),
   login: (username, password) => ipcRenderer.invoke('db:login', username, password),
-  getUsers: () => ipcRenderer.invoke('db:getUsers'),
+  validateUserSession: (userId) => ipcRenderer.invoke('db:validateUserSession', userId),
+  getUsers: (userId) => ipcRenderer.invoke('db:getUsers', userId),
   createUser: (payload, userId) => ipcRenderer.invoke('db:createUser', payload, userId),
   deleteUser: (id, userId) => ipcRenderer.invoke('db:deleteUser', id, userId),
   updateUserPassword: (id, newPassword, userId) => ipcRenderer.invoke('db:updateUserPassword', id, newPassword, userId),
+  setUserActive: (id, isActive, userId) => ipcRenderer.invoke('db:setUserActive', id, isActive, userId),
   updateGradeFee: (gradeId, amount, currency, userId) => ipcRenderer.invoke('db:updateGradeFee', gradeId, amount, currency, userId),
   applyGradeFeeToAll: (gradeId, amount, userId) => ipcRenderer.invoke('db:applyGradeFeeToAll', gradeId, amount, userId),
   updateGradeFeesBulk: (edits, userId) => ipcRenderer.invoke('db:updateGradeFeesBulk', edits, userId),
@@ -50,6 +55,8 @@ const electronAPI = {
   getLatestBackupInfo: () => ipcRenderer.invoke('db:getLatestBackupInfo'),
   addAcademicYear: (yearName, userId) => ipcRenderer.invoke('db:addAcademicYear', yearName, userId),
   setCurrentAcademicYear: (yearName, userId) => ipcRenderer.invoke('db:setCurrentAcademicYear', yearName, userId),
+  getSchoolSettings: () => ipcRenderer.invoke('db:getSchoolSettings'),
+  saveSchoolSettings: (settings, userId) => ipcRenderer.invoke('db:saveSchoolSettings', settings, userId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

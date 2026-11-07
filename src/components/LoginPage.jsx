@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { login } from '../services/databaseApi';
 
-function LoginPage({ onLoginSuccess }) {
+function LoginPage({ onLoginSuccess, initialMessage = '' }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setError(initialMessage);
+  }, [initialMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

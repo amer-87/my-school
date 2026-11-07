@@ -111,6 +111,24 @@ async function getFees(academicYear) {
   return electronApi?.getFees ? electronApi.getFees(academicYear) : [];
 }
 
+async function generateTuitionInstallments(firstDueDate, academicYear, userId) {
+  if (!electronApi?.generateTuitionInstallments) {
+    throw new Error('إدارة الأقساط متاحة من تطبيق سطح المكتب فقط.');
+  }
+  return electronApi.generateTuitionInstallments(firstDueDate, academicYear, userId);
+}
+
+async function getTuitionExpenses(academicYear) {
+  return electronApi?.getTuitionExpenses ? electronApi.getTuitionExpenses(academicYear) : [];
+}
+
+async function createTuitionExpense(payload, userId, academicYear) {
+  if (!electronApi?.createTuitionExpense) {
+    throw new Error('تسجيل المصروفات متاح من تطبيق سطح المكتب فقط.');
+  }
+  return electronApi.createTuitionExpense(payload, userId, academicYear);
+}
+
 async function createCertificate(payload) {
   return electronApi?.createCertificate ? electronApi.createCertificate(payload) : payload;
 }
@@ -151,16 +169,27 @@ async function login(username, password) {
   return electronApi?.login ? electronApi.login(username, password) : { ok: true, user: { id: 1, username: 'admin', role: 'admin', full_name: 'مدير النظام' } };
 }
 
-async function getUsers() {
-  return electronApi?.getUsers ? electronApi.getUsers() : [];
+async function validateUserSession(userId) {
+  return electronApi?.validateUserSession ? electronApi.validateUserSession(userId) : { ok: true };
+}
+
+async function getUsers(userId) {
+  return electronApi?.getUsers ? electronApi.getUsers(userId) : [];
 }
 
 async function createUser(payload, userId) {
-  return electronApi?.createUser ? electronApi.createUser(payload, userId) : payload;
+  if (!electronApi?.createUser) {
+    throw new Error('إدارة حسابات الموظفين متاحة من تطبيق سطح المكتب فقط. أعد تشغيل التطبيق إذا استمرت المشكلة.');
+  }
+  return electronApi.createUser(payload, userId);
 }
 
 async function deleteUser(id, userId) {
   return electronApi?.deleteUser ? electronApi.deleteUser(id, userId) : { ok: true };
+}
+
+async function setUserActive(id, isActive, userId) {
+  return electronApi?.setUserActive ? electronApi.setUserActive(id, isActive, userId) : { ok: true };
 }
 
 async function updateUserPassword(id, newPassword, userId) {
@@ -199,22 +228,35 @@ async function setCurrentAcademicYear(yearName, userId) {
   return electronApi?.setCurrentAcademicYear ? electronApi.setCurrentAcademicYear(yearName, userId) : { ok: true };
 }
 
+async function getSchoolSettings() {
+  return electronApi?.getSchoolSettings
+    ? electronApi.getSchoolSettings()
+    : { schoolName: 'مدارس المعلم والكتاب الأهلية', whatsappPhone: '' };
+}
+
+async function saveSchoolSettings(settings, userId) {
+  if (!electronApi?.saveSchoolSettings) {
+    return { ok: false, message: 'إعدادات المدرسة متاحة من تطبيق سطح المكتب فقط.' };
+  }
+  return electronApi.saveSchoolSettings(settings, userId);
+}
+
 export {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
-  createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
+  createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
-  addAcademicYear, setCurrentAcademicYear
+  login, validateUserSession, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings
 };
 
 export default {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
-  createFeePayment, getFees, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
+  createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, getUsers, createUser, deleteUser, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
-  addAcademicYear, setCurrentAcademicYear
+  login, validateUserSession, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings
 };

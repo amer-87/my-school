@@ -54,8 +54,36 @@ function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
             </select>
           </label>
           <label>
-            الهاتف
-            <input name="phone" value={formData.phone} onChange={onChange} required />
+            هاتف ولي الأمر
+            <span style={{ display: 'flex', direction: 'ltr', alignItems: 'stretch' }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 12px',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  borderRight: 0,
+                  borderRadius: '10px 0 0 10px',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#f8fafc',
+                }}
+              >
+                +964
+              </span>
+              <input
+                aria-label="رقم هاتف ولي الأمر داخل العراق"
+                name="phone"
+                type="tel"
+                inputMode="tel"
+                dir="ltr"
+                placeholder="7XXXXXXXXX"
+                value={formData.phone}
+                onChange={onChange}
+                required
+                style={{ flex: 1, minWidth: 0, borderRadius: '0 10px 10px 0' }}
+              />
+            </span>
           </label>
           <label>
             العنوان

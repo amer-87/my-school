@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import { createBackup, restoreBackup, getLatestBackupInfo, addAcademicYear, setCurrentAcademicYear as setDbCurrentYear } from '../services/databaseApi';
+import { createBackup, restoreBackup, getLatestBackupInfo, addAcademicYear, setCurrentAcademicYear as setDbCurrentYear, getSchoolSettings, saveSchoolSettings } from '../services/databaseApi';
+import { getIraqiLocalPhone, getIraqiWhatsAppNumber } from '../services/studentService';
 import UserManagement from './UserManagement';
 
-function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearChange, onRefreshYears }) {
+function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearChange, onRefreshYears, onSchoolSettingsChange }) {
   const [backupInfo, setBackupInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [activeTab, setActiveTab] = useState('years'); // Default to 'years'
   const [newYearName, setNewYearName] = useState('');
+  const [schoolForm, setSchoolForm] = useState({ schoolName: '', whatsappPhone: '' });
+  const [schoolMessage, setSchoolMessage] = useState({ text: '', type: '' });
 
   const loadBackupInfo = async () => {
     try {
@@ -20,7 +23,49 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
 
   useEffect(() => {
     loadBackupInfo();
+    getSchoolSettings()
+      .then((settings) => {
+        setSchoolForm({
+          schoolName: settings.schoolName,
+          whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
+        });
+        if (onSchoolSettingsChange) onSchoolSettingsChange(settings);
+      })
+      .catch((error) => {
+        console.error('Failed to load school settings', error);
+        setSchoolMessage({ text: 'تعذر تحميل بيانات المدرسة.', type: 'error' });
+      });
   }, []);
+
+  const handleSaveSchoolSettings = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setSchoolMessage({ text: '', type: '' });
+
+    try {
+      const result = await saveSchoolSettings({
+        schoolName: schoolForm.schoolName,
+        whatsappPhone: getIraqiWhatsAppNumber(schoolForm.whatsappPhone),
+      }, currentUser.id);
+      if (!result.ok) {
+        setSchoolMessage({ text: result.message || 'تعذر حفظ بيانات المدرسة.', type: 'error' });
+        return;
+      }
+
+      const settings = result.settings;
+      setSchoolForm({
+        schoolName: settings.schoolName,
+        whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
+      });
+      if (onSchoolSettingsChange) onSchoolSettingsChange(settings);
+      setSchoolMessage({ text: 'تم حفظ بيانات المدرسة بنجاح.', type: 'success' });
+    } catch (error) {
+      console.error('Failed to save school settings', error);
+      setSchoolMessage({ text: 'حدث خطأ أثناء حفظ بيانات المدرسة.', type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleAddYear = async (e) => {
     e.preventDefault();
@@ -112,6 +157,12 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
         >
           🛡️ النسخ الاحتياطي
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'school' ? 'active' : ''}`}
+          onClick={() => setActiveTab('school')}
+        >
+          🏫 بيانات المدرسة
+        </button>
         {currentUser?.role === 'admin' && (
           <button
             className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
@@ -170,6 +221,70 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
               </div>
             </article>
           </div>
+        </div>
+      ) : activeTab === 'school' ? (
+        <div className="cards">
+          <article className="card">
+            <h3>بيانات المدرسة والتواصل</h3>
+            <p>يظهر اسم المدرسة ورقم واتسابها في الرسائل المرسلة إلى أولياء الأمور.</p>
+            <p>تُفتح المحادثة من حساب واتساب المسجل على هذا الجهاز.</p>
+
+            <form className="modal-form" onSubmit={handleSaveSchoolSettings} style={{ marginTop: '20px' }}>
+              <div className="form-grid">
+                <label>
+                  اسم المدرسة
+                  <input
+                    value={schoolForm.schoolName}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, schoolName: event.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  رقم واتساب المدرسة
+                  <span style={{ display: 'flex', direction: 'ltr', alignItems: 'stretch' }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 12px',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        borderRight: 0,
+                        borderRadius: '10px 0 0 10px',
+                        background: 'rgba(255,255,255,0.08)',
+                        color: '#f8fafc',
+                      }}
+                    >
+                      +964
+                    </span>
+                    <input
+                      aria-label="رقم واتساب المدرسة داخل العراق"
+                      type="tel"
+                      inputMode="tel"
+                      dir="ltr"
+                      placeholder="7XXXXXXXXX"
+                      value={schoolForm.whatsappPhone}
+                      onChange={(event) => setSchoolForm((form) => ({ ...form, whatsappPhone: event.target.value }))}
+                      required
+                      style={{ flex: 1, minWidth: 0, borderRadius: '0 10px 10px 0' }}
+                    />
+                  </span>
+                </label>
+              </div>
+
+              {schoolMessage.text && (
+                <p className={schoolMessage.type === 'error' ? 'form-error' : ''} role="status">
+                  {schoolMessage.text}
+                </p>
+              )}
+
+              <div className="modal-actions">
+                <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                  {isLoading ? 'جاري الحفظ...' : 'حفظ بيانات المدرسة'}
+                </button>
+              </div>
+            </form>
+          </article>
         </div>
       ) : (
         <>

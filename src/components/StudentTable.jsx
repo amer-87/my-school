@@ -1,6 +1,7 @@
 import DataTable from './DataTable';
+import { getIraqiWhatsAppNumber, getSchoolWhatsAppSignature } from '../services/studentService';
 
-function StudentTable({ students, onView, onEdit, onDelete, onTransfer, searchTerm, onSearchChange }) {
+function StudentTable({ students, schoolSettings, onView, onEdit, onDelete, onTransfer, searchTerm, onSearchChange }) {
   const columns = [
     { key: 'id', label: 'رقم' },
     { key: 'fullName', label: 'اسم الطالب' },
@@ -17,8 +18,13 @@ function StudentTable({ students, onView, onEdit, onDelete, onTransfer, searchTe
       alert('رقم الهاتف غير متوفر.');
       return;
     }
-    const message = `السلام عليكم، بخصوص الطالب (${student.fullName}). يرجى المتابعة معنا.`;
-    const url = `https://wa.me/${student.phone.replace(/\s+/g, '')}?text=${encodeURIComponent(message)}`;
+    const message = `السلام عليكم، بخصوص الطالب (${student.fullName}). يرجى المتابعة معنا.${getSchoolWhatsAppSignature(schoolSettings)}`;
+    const phone = getIraqiWhatsAppNumber(student.phone);
+    if (!phone) {
+      alert('رقم الهاتف غير صالح.');
+      return;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 

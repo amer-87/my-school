@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS exam_results (
     exam_id INTEGER NOT NULL,
     student_id INTEGER NOT NULL,
     score REAL,
+    modified_by INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -85,6 +86,52 @@ CREATE TABLE IF NOT EXISTS fee_payments (
     payment_date TEXT,
     method TEXT,
     note TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tuition_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    fee_record_id INTEGER NOT NULL,
+    academic_year TEXT NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'عراقي',
+    opening_paid REAL NOT NULL DEFAULT 0,
+    scheduled_total REAL NOT NULL DEFAULT 0,
+    installment_count INTEGER NOT NULL DEFAULT 4,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_id, academic_year)
+);
+
+CREATE TABLE IF NOT EXISTS tuition_installments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    installment_number INTEGER NOT NULL,
+    due_date TEXT NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    UNIQUE(plan_id, installment_number),
+    FOREIGN KEY (plan_id) REFERENCES tuition_plans(id)
+);
+
+CREATE TABLE IF NOT EXISTS tuition_payment_allocations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id INTEGER NOT NULL,
+    installment_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    FOREIGN KEY (payment_id) REFERENCES fee_payments(id),
+    FOREIGN KEY (installment_id) REFERENCES tuition_installments(id)
+);
+
+CREATE TABLE IF NOT EXISTS tuition_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'عراقي',
+    expense_date TEXT NOT NULL,
+    payment_method TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    academic_year TEXT NOT NULL,
+    created_by INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -121,8 +168,10 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'employee', -- 'admin' or 'employee'
+    role TEXT NOT NULL DEFAULT 'employee',
     full_name TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
