@@ -10,7 +10,6 @@ function StudentDetailsModal({ isOpen, student, onClose }) {
     { label: 'الصف', value: student.grade },
     { label: 'الشعبة', value: student.division },
     { label: 'الهاتف', value: student.phone },
-    { label: 'اسم ولي الأمر', value: student.guardianName },
     { label: 'العنوان', value: student.address },
     { label: 'الحالة', value: student.status },
   ];

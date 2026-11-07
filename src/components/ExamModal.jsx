@@ -1,6 +1,6 @@
 import { examSubjects } from '../services/examService';
 
-function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorMessage, grades, divisions }) {
+function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorMessage, grades, divisions, isLocked }) {
   if (!isOpen) return null;
 
   const availableDivisions = divisions.filter((division) => division.gradeId === Number(formData.gradeId));
@@ -9,7 +9,7 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card">
         <div className="modal-header">
-          <h3>{mode === 'edit' ? 'تعديل امتحان' : 'إضافة امتحان'}</h3>
+          <h3>{mode === 'edit' ? 'تعديل بيانات الامتحان' : 'إضافة امتحان جديد'}</h3>
           <button type="button" className="icon-btn" onClick={onClose}>
             ×
           </button>
@@ -19,11 +19,7 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
           {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
           <div className="form-grid">
             <label>
-              اسم الامتحان
-              <input name="name" value={formData.name} onChange={onChange} required />
-            </label>
-            <label>
-              المادة
+              المادة الدراسية
               <select name="subject" value={formData.subject} onChange={onChange} required>
                 {examSubjects.map((subject) => (
                   <option key={subject} value={subject}>
@@ -33,8 +29,9 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
               </select>
             </label>
             <label>
-              الصف
-              <select name="gradeId" value={formData.gradeId} onChange={onChange} required>
+              الصف الدراسي
+              <select name="gradeId" value={formData.gradeId} onChange={onChange} required disabled={isLocked}>
+                <option value="">اختر الصف...</option>
                 {grades.map((grade) => (
                   <option key={grade.id} value={grade.id}>
                     {grade.name}
@@ -44,7 +41,8 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
             </label>
             <label>
               الشعبة
-              <select name="divisionId" value={formData.divisionId} onChange={onChange} required>
+              <select name="divisionId" value={formData.divisionId} onChange={onChange} required disabled={isLocked}>
+                <option value="">اختر الشعبة...</option>
                 {availableDivisions.map((division) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
@@ -53,18 +51,29 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
               </select>
             </label>
             <label>
-              التاريخ
+              الفترة (الشهر / الامتحان)
+              <select name="course" value={formData.course || 'الشهر الأول'} onChange={onChange} required>
+                <option value="الشهر الأول">الشهر الأول</option>
+                <option value="الشهر الثاني">الشهر الثاني</option>
+                <option value="الشهر الثالث">الشهر الثالث</option>
+                <option value="الشهر الرابع">الشهر الرابع</option>
+                <option value="نصف السنة">نصف السنة</option>
+                <option value="النهائي">النهائي</option>
+              </select>
+            </label>
+            <label>
+              تاريخ الامتحان
               <input type="date" name="examDate" value={formData.examDate} onChange={onChange} required />
             </label>
             <label>
-              الدرجة النهائية
+              الدرجة النهائية (مثلاً 100)
               <input type="number" name="totalScore" value={formData.totalScore} onChange={onChange} required min="1" />
             </label>
           </div>
 
           <div className="modal-actions">
             <button type="submit" className="btn btn-primary">
-              حفظ
+              حفظ البيانات
             </button>
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               إلغاء

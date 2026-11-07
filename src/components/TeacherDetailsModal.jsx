@@ -1,6 +1,6 @@
 import DetailsModal from './DetailsModal';
 
-function TeacherDetailsModal({ isOpen, teacher, onClose }) {
+function TeacherDetailsModal({ isOpen, teacher, onClose, onEdit }) {
   if (!isOpen || !teacher) return null;
 
   const details = [
@@ -9,12 +9,19 @@ function TeacherDetailsModal({ isOpen, teacher, onClose }) {
     { label: 'التخصص', value: teacher.specialty },
     { label: 'المادة', value: teacher.subject },
     { label: 'الهاتف', value: teacher.phone },
-    { label: 'البريد الإلكتروني', value: teacher.email },
     { label: 'العنوان', value: teacher.address },
     { label: 'الحالة', value: teacher.status },
   ];
 
-  return <DetailsModal isOpen={isOpen} title="بيانات المعلم" items={details} onClose={onClose} />;
+  return (
+    <DetailsModal
+      isOpen={isOpen}
+      title="بيانات المعلم"
+      items={details}
+      onClose={onClose}
+      onEdit={() => onEdit(teacher)}
+    />
+  );
 }
 
 export default TeacherDetailsModal;

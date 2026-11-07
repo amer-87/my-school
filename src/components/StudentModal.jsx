@@ -28,6 +28,7 @@ function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
           <label>
             الصف
             <select name="gradeId" value={formData.gradeId} onChange={onChange} required>
+              <option value="">اختر الصف</option>
               {grades.map((grade) => (
                 <option key={grade.id} value={grade.id}>
                   {grade.name}
@@ -37,21 +38,24 @@ function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
           </label>
           <label>
             الشعبة
-            <select name="divisionId" value={formData.divisionId} onChange={onChange} required>
-              {availableDivisions.map((division) => (
-                <option key={division.id} value={division.id}>
-                  {division.name}
-                </option>
-              ))}
+            <select name="divisionId" value={formData.divisionId} onChange={onChange} required disabled={!formData.gradeId || availableDivisions.length === 0}>
+              {availableDivisions.length === 0 ? (
+                <option value="">{formData.gradeId ? 'لا توجد شعب لهذا الصف' : 'اختر الصف أولاً'}</option>
+              ) : (
+                <>
+                  <option value="">اختر الشعبة</option>
+                  {availableDivisions.map((division) => (
+                    <option key={division.id} value={division.id}>
+                      {division.name}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </label>
           <label>
             الهاتف
             <input name="phone" value={formData.phone} onChange={onChange} required />
-          </label>
-          <label>
-            اسم ولي الأمر
-            <input name="guardianName" value={formData.guardianName} onChange={onChange} required />
           </label>
           <label>
             العنوان

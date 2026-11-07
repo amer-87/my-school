@@ -44,10 +44,6 @@ function TeacherModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
             <input name="phone" value={formData.phone} onChange={onChange} required />
           </label>
           <label>
-            البريد الإلكتروني
-            <input type="email" name="email" value={formData.email} onChange={onChange} required />
-          </label>
-          <label>
             العنوان
             <input name="address" value={formData.address} onChange={onChange} required />
           </label>

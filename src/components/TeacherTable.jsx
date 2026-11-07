@@ -33,9 +33,9 @@ function TeacherTable({ teachers, onView, onEdit, onDelete, searchTerm, onSearch
           <span>استخدم زر إضافة معلم لإدخال أول سجل.</span>
         </div>
       )}
-      renderRow={(teacher) => (
+      renderRow={(teacher, index) => (
         <tr key={teacher.id}>
-          <td>{teacher.id}</td>
+          <td>{index + 1}</td>
           <td>{teacher.fullName}</td>
           <td>{teacher.specialty}</td>
           <td>{teacher.subject}</td>

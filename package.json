@@ -4,7 +4,7 @@
   "description": "School management desktop app built with Electron, React, HTML and CSS",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev": "node electron/dev.js",
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",

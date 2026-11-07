@@ -1,4 +1,4 @@
-function DetailsModal({ isOpen, title, items, onClose }) {
+function DetailsModal({ isOpen, title, items, onClose, onEdit }) {
   if (!isOpen) return null;
 
   return (
@@ -21,6 +21,11 @@ function DetailsModal({ isOpen, title, items, onClose }) {
         </div>
 
         <div className="modal-actions">
+          {onEdit && (
+            <button type="button" className="btn btn-primary" onClick={onEdit}>
+              📝 تعديل البيانات
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             إغلاق
           </button>
