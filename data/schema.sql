@@ -191,3 +191,15 @@ CREATE TABLE IF NOT EXISTS academic_years (
     year_name TEXT UNIQUE NOT NULL, -- e.g. '2026-2027'
     is_current INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS school_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    school_name TEXT NOT NULL DEFAULT 'مدارس المعلم والكتاب الأهلية',
+    whatsapp_phone TEXT NOT NULL DEFAULT '',
+    recovery_email TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS password_recovery (
+    username_key TEXT PRIMARY KEY,
+    last_requested_at INTEGER NOT NULL
+);

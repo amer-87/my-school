@@ -1,5 +1,7 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const nodemailer = require('nodemailer');
 
 let databaseService;
 try {
@@ -12,6 +14,108 @@ try {
 }
 
 const isDev = !app.isPackaged;
+const authenticatedUsers = new Map();
+
+async function getAuthenticatedUserId(event) {
+  const userId = authenticatedUsers.get(event.sender.id);
+  if (!userId) return null;
+  const session = await databaseService.validateUserSession(userId);
+  if (!session.ok) {
+    authenticatedUsers.delete(event.sender.id);
+    return null;
+  }
+  return session.user.id;
+}
+
+async function getAuthenticatedAdminId(event) {
+  const userId = await getAuthenticatedUserId(event);
+  return userId && await databaseService.isActiveAdmin(userId) ? userId : null;
+}
+
+function getRecoveryCredentialPath() {
+  return path.join(app.getPath('userData'), 'recovery-gmail.bin');
+}
+
+function readRecoveryMailPassword() {
+  if (process.platform !== 'win32' || !safeStorage.isEncryptionAvailable()) {
+    throw new Error('خزنة Windows الآمنة غير متاحة.');
+  }
+  const credentialPath = getRecoveryCredentialPath();
+  if (!fs.existsSync(credentialPath)) throw new Error('لم يتم إعداد بيانات إرسال Gmail.');
+  return safeStorage.decryptString(fs.readFileSync(credentialPath));
+}
+
+async function sendRecoveryEmail(to, code) {
+  const password = readRecoveryMailPassword();
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: to, pass: password },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 15000,
+  });
+  await transporter.sendMail({
+    from: `"نظام إدارة المدارس" <${to}>`,
+    to,
+    subject: 'رمز استرجاع كلمة مرور مدير المدرسة',
+    text: `رمز التحقق الخاص بك هو: ${code}\n\nتنتهي صلاحيته خلال 10 دقائق، ولا يمكن استخدامه إلا مرة واحدة. إذا لم تطلب هذا الرمز فتجاهل الرسالة.`,
+  });
+}
+
+async function sendRecoveryTestEmail(to) {
+  const password = readRecoveryMailPassword();
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: to, pass: password },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 15000,
+  });
+  await transporter.sendMail({
+    from: `"نظام إدارة المدارس" <${to}>`,
+    to,
+    subject: 'اختبار إعداد بريد استرجاع كلمة المرور',
+    text: 'تم إعداد إرسال بريد استرجاع كلمة مرور مدير المدرسة بنجاح.',
+  });
+}
+
+function getRecoveryMailErrorMessage(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const response = String(error?.response || '').toLowerCase();
+  const responseCode = Number(error?.responseCode || 0);
+
+  if (code === 'EAUTH' || responseCode === 534 || responseCode === 535
+    || response.includes('application-specific password') || response.includes('username and password not accepted')) {
+    return 'رفض Gmail تسجيل الدخول. تأكد أن البريد في بيانات المدرسة هو نفسه حساب Google، وأن المدخل كلمة مرور تطبيق صالحة من 16 حرفاً بعد تفعيل التحقق بخطوتين، وليست كلمة مرور Gmail العادية.';
+  }
+  if (['ETIMEDOUT', 'ESOCKET', 'ECONNECTION', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(code)) {
+    return 'تعذر الاتصال بخوادم Gmail. تحقق من اتصال الإنترنت أو جدار الحماية ثم أعد الاختبار.';
+  }
+  if (code === 'EENVELOPE' || responseCode >= 500) {
+    return 'رفض Gmail إرسال الرسالة. تحقق من أن بريد المدرسة صحيح ومتاح وأنه يطابق حساب كلمة مرور التطبيق.';
+  }
+  if (error?.message === 'خزنة Windows الآمنة غير متاحة.') {
+    return 'خزنة Windows الآمنة غير متاحة. شغّل التطبيق على Windows ثم أعد إعداد كلمة مرور تطبيق Gmail.';
+  }
+  if (error?.message === 'لم يتم إعداد بيانات إرسال Gmail.') {
+    return 'لم تُحفظ كلمة مرور تطبيق Gmail. أدخل كلمة مرور التطبيق ذات 16 حرفاً واضغط حفظ بيانات المدرسة أولاً.';
+  }
+  return `تعذر إرسال الرسالة (${code || 'خطأ غير معروف'}). تحقق من إعدادات Gmail واتصال الإنترنت.`;
+}
+
+async function getRecoveryMailStatus(userId) {
+  if (!await databaseService.isActiveAdmin(userId)) {
+    return { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
+  }
+  const settings = await databaseService.getSchoolSettings();
+  return {
+    ok: true,
+    recoveryEmail: settings.recoveryEmail,
+    credentialConfigured: process.platform === 'win32'
+      && safeStorage.isEncryptionAvailable()
+      && fs.existsSync(getRecoveryCredentialPath()),
+  };
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -31,6 +135,10 @@ function createWindow() {
   // Hide DevTools for a professional clean look
   // win.webContents.openDevTools();
 
+  win.webContents.on('did-start-navigation', (_, __, ___, isMainFrame) => {
+    if (isMainFrame) authenticatedUsers.delete(win.webContents.id);
+  });
+  win.webContents.once('destroyed', () => authenticatedUsers.delete(win.webContents.id));
   if (isDev) {
     win.loadURL(process.env.ELECTRON_START_URL || 'http://localhost:5173');
   } else {
@@ -83,13 +191,55 @@ ipcMain.handle('db:promoteStudents', (_, studentIds, userId, currentYear) => dat
 ipcMain.handle('db:getExpenses', () => databaseService.getExpenses());
 ipcMain.handle('db:createExpense', (_, payload) => databaseService.createExpense(payload));
 ipcMain.handle('db:updateExpenseStatus', (_, id, status) => databaseService.updateExpenseStatus(id, status));
-ipcMain.handle('db:login', (_, username, password) => databaseService.login(username, password));
-ipcMain.handle('db:validateUserSession', (_, userId) => databaseService.validateUserSession(userId));
-ipcMain.handle('db:getUsers', (_, userId) => databaseService.getUsers(userId));
-ipcMain.handle('db:createUser', (_, payload, userId) => databaseService.createUser(payload, userId));
-ipcMain.handle('db:deleteUser', (_, id, userId) => databaseService.deleteUser(id, userId));
-ipcMain.handle('db:updateUserPassword', (_, id, newPassword, userId) => databaseService.updateUserPassword(id, newPassword, userId));
-ipcMain.handle('db:setUserActive', (_, id, isActive, userId) => databaseService.setUserActive(id, isActive, userId));
+ipcMain.handle('db:login', async (event, username, password) => {
+  authenticatedUsers.delete(event.sender.id);
+  const result = await databaseService.login(username, password);
+  if (result.ok) authenticatedUsers.set(event.sender.id, result.user.id);
+  return result;
+});
+ipcMain.handle('auth:logout', (event) => authenticatedUsers.delete(event.sender.id));
+ipcMain.handle('db:validateUserSession', async (event) => {
+  const userId = authenticatedUsers.get(event.sender.id);
+  if (!userId) return { ok: false };
+  const result = await databaseService.validateUserSession(userId);
+  if (!result.ok) authenticatedUsers.delete(event.sender.id);
+  return result;
+});
+ipcMain.handle('db:getUsers', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) throw new Error('إدارة حسابات الموظفين متاحة لمدير المدرسة فقط.');
+  return databaseService.getUsers(userId);
+});
+ipcMain.handle('db:createUser', async (event, payload) => {
+  const userId = await getAuthenticatedUserId(event);
+  return userId
+    ? databaseService.createUser(payload, userId)
+    : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
+});
+ipcMain.handle('db:deleteUser', async (event, id) => {
+  const userId = await getAuthenticatedUserId(event);
+  return userId
+    ? databaseService.deleteUser(id, userId)
+    : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
+});
+ipcMain.handle('db:updateUserPassword', async (event, id, newPassword) => {
+  const userId = await getAuthenticatedUserId(event);
+  return userId
+    ? databaseService.updateUserPassword(id, newPassword, userId)
+    : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
+});
+ipcMain.handle('db:updateOwnUsername', async (event, id, newUsername, currentPassword) => {
+  const userId = await getAuthenticatedUserId(event);
+  return userId
+    ? databaseService.updateOwnUsername(id, newUsername, currentPassword, userId)
+    : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
+});
+ipcMain.handle('db:setUserActive', async (event, id, isActive) => {
+  const userId = await getAuthenticatedUserId(event);
+  return userId
+    ? databaseService.setUserActive(id, isActive, userId)
+    : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
+});
 ipcMain.handle('db:updateGradeFee', (_, gradeId, amount, currency, userId) => databaseService.updateGradeFee(gradeId, amount, currency, userId));
 ipcMain.handle('db:applyGradeFeeToAll', (_, gradeId, amount, userId) => databaseService.applyGradeFeeToAll(gradeId, amount, userId));
 ipcMain.handle('db:updateGradeFeesBulk', (_, edits, userId) => databaseService.updateGradeFeesBulk(edits, userId));
@@ -97,8 +247,65 @@ ipcMain.handle('db:getLogs', () => databaseService.getLogs());
 ipcMain.handle('db:getAcademicYears', () => databaseService.getAcademicYears());
 ipcMain.handle('db:addAcademicYear', (_, yearName, userId) => databaseService.addAcademicYear(yearName, userId));
 ipcMain.handle('db:setCurrentAcademicYear', (_, yearName, userId) => databaseService.setCurrentAcademicYear(yearName, userId));
-ipcMain.handle('db:getSchoolSettings', () => databaseService.getSchoolSettings());
-ipcMain.handle('db:saveSchoolSettings', (_, settings, userId) => databaseService.saveSchoolSettings(settings, userId));
+ipcMain.handle('db:getSchoolSettings', async (event) => {
+  const settings = await databaseService.getSchoolSettings();
+  const userId = await getAuthenticatedAdminId(event);
+  return userId ? settings : { ...settings, recoveryEmail: '' };
+});
+ipcMain.handle('db:saveSchoolSettings', async (event, settings) => {
+  const userId = await getAuthenticatedAdminId(event);
+  return userId
+    ? databaseService.saveSchoolSettings(settings, userId)
+    : { ok: false, message: 'تعديل بيانات المدرسة متاح لمدير المدرسة فقط.' };
+});
+ipcMain.handle('security:saveRecoveryMailPassword', async (event, password) => {
+  if (!await getAuthenticatedAdminId(event)) {
+    return { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
+  }
+  if (process.platform !== 'win32' || !safeStorage.isEncryptionAvailable()) {
+    return { ok: false, message: 'خزنة Windows الآمنة غير متاحة على هذا الجهاز.' };
+  }
+  const normalizedPassword = String(password || '').replace(/\s/g, '');
+  if (!/^[a-zA-Z0-9]{16}$/.test(normalizedPassword)) {
+    return { ok: false, message: 'أدخل كلمة مرور تطبيق Gmail المكونة من 16 حرفاً أو رقماً.' };
+  }
+  const encryptedPassword = safeStorage.encryptString(normalizedPassword);
+  fs.writeFileSync(getRecoveryCredentialPath(), encryptedPassword);
+  return { ok: true };
+});
+ipcMain.handle('security:getRecoveryMailStatus', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  return userId ? getRecoveryMailStatus(userId) : { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
+});
+ipcMain.handle('security:testRecoveryMail', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) return { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
+  const status = await getRecoveryMailStatus(userId);
+  if (!status.ok) return status;
+  if (!status.recoveryEmail || !status.credentialConfigured) {
+    return { ok: false, message: 'أدخل بريد Gmail وكلمة مرور التطبيق واحفظهما أولاً.' };
+  }
+  try {
+    await sendRecoveryTestEmail(status.recoveryEmail);
+    return { ok: true, message: 'تم إرسال رسالة اختبار إلى بريد المدرسة.' };
+  } catch (error) {
+    console.error('Recovery email test failed:', {
+      code: error?.code || '',
+      responseCode: error?.responseCode || '',
+      command: error?.command || '',
+    });
+    return { ok: false, message: getRecoveryMailErrorMessage(error) };
+  }
+});
+ipcMain.handle('security:requestPasswordRecovery', (_, username) => (
+  databaseService.requestPasswordRecovery(username, sendRecoveryEmail)
+));
+ipcMain.handle('security:verifyPasswordRecoveryCode', (_, username, code) => (
+  databaseService.verifyPasswordRecoveryCode(username, code)
+));
+ipcMain.handle('security:resetAdministratorPassword', (_, username, token, password) => (
+  databaseService.resetAdministratorPassword(username, token, password)
+));
 
 ipcMain.handle('db:createBackup', async () => {
   const { canceled, filePath } = await dialog.showSaveDialog({

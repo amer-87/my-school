@@ -169,8 +169,28 @@ async function login(username, password) {
   return electronApi?.login ? electronApi.login(username, password) : { ok: true, user: { id: 1, username: 'admin', role: 'admin', full_name: 'مدير النظام' } };
 }
 
+async function requestPasswordRecovery(username) {
+  if (!electronApi?.requestPasswordRecovery) throw new Error('استرجاع كلمة المرور متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.requestPasswordRecovery(username);
+}
+
+async function verifyPasswordRecoveryCode(username, code) {
+  if (!electronApi?.verifyPasswordRecoveryCode) throw new Error('استرجاع كلمة المرور متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.verifyPasswordRecoveryCode(username, code);
+}
+
+async function resetAdministratorPassword(username, token, password) {
+  if (!electronApi?.resetAdministratorPassword) throw new Error('استرجاع كلمة المرور متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.resetAdministratorPassword(username, token, password);
+}
+
 async function validateUserSession(userId) {
   return electronApi?.validateUserSession ? electronApi.validateUserSession(userId) : { ok: true };
+}
+
+async function logout() {
+  if (!electronApi?.logout) throw new Error('تعذر إنهاء جلسة التطبيق.');
+  return electronApi.logout();
 }
 
 async function getUsers(userId) {
@@ -194,6 +214,13 @@ async function setUserActive(id, isActive, userId) {
 
 async function updateUserPassword(id, newPassword, userId) {
   return electronApi?.updateUserPassword ? electronApi.updateUserPassword(id, newPassword, userId) : { ok: true };
+}
+
+async function updateOwnUsername(id, newUsername, currentPassword, userId) {
+  if (!electronApi?.updateOwnUsername) {
+    throw new Error('تغيير اسم المستخدم متاح من تطبيق سطح المكتب فقط. أعد تشغيل التطبيق إذا استمرت المشكلة.');
+  }
+  return electronApi.updateOwnUsername(id, newUsername, currentPassword, userId);
 }
 
 async function updateGradeFee(gradeId, amount, currency, userId) {
@@ -231,7 +258,7 @@ async function setCurrentAcademicYear(yearName, userId) {
 async function getSchoolSettings() {
   return electronApi?.getSchoolSettings
     ? electronApi.getSchoolSettings()
-    : { schoolName: 'مدارس المعلم والكتاب الأهلية', whatsappPhone: '' };
+    : { schoolName: 'مدارس المعلم والكتاب الأهلية', whatsappPhone: '', recoveryEmail: '' };
 }
 
 async function saveSchoolSettings(settings, userId) {
@@ -241,14 +268,29 @@ async function saveSchoolSettings(settings, userId) {
   return electronApi.saveSchoolSettings(settings, userId);
 }
 
+async function saveRecoveryMailPassword(password, userId) {
+  if (!electronApi?.saveRecoveryMailPassword) throw new Error('إعداد بريد الاسترجاع متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.saveRecoveryMailPassword(password, userId);
+}
+
+async function getRecoveryMailStatus(userId) {
+  if (!electronApi?.getRecoveryMailStatus) throw new Error('إعداد بريد الاسترجاع متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.getRecoveryMailStatus(userId);
+}
+
+async function testRecoveryMail(userId) {
+  if (!electronApi?.testRecoveryMail) throw new Error('اختبار بريد الاسترجاع متاح من تطبيق سطح المكتب فقط.');
+  return electronApi.testRecoveryMail(userId);
+}
+
 export {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, validateUserSession, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
-  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings
+  login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail
 };
 
 export default {
@@ -257,6 +299,6 @@ export default {
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
-  login, validateUserSession, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
-  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings
+  login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
+  addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail
 };

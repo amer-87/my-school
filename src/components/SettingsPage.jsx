@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { createBackup, restoreBackup, getLatestBackupInfo, addAcademicYear, setCurrentAcademicYear as setDbCurrentYear, getSchoolSettings, saveSchoolSettings } from '../services/databaseApi';
+import { createBackup, restoreBackup, getLatestBackupInfo, addAcademicYear, setCurrentAcademicYear as setDbCurrentYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail } from '../services/databaseApi';
 import { getIraqiLocalPhone, getIraqiWhatsAppNumber } from '../services/studentService';
 import UserManagement from './UserManagement';
 
@@ -9,8 +9,9 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
   const [message, setMessage] = useState({ text: '', type: '' });
   const [activeTab, setActiveTab] = useState('years'); // Default to 'years'
   const [newYearName, setNewYearName] = useState('');
-  const [schoolForm, setSchoolForm] = useState({ schoolName: '', whatsappPhone: '' });
+  const [schoolForm, setSchoolForm] = useState({ schoolName: '', whatsappPhone: '', recoveryEmail: '', recoveryAppPassword: '' });
   const [schoolMessage, setSchoolMessage] = useState({ text: '', type: '' });
+  const [recoveryMailStatus, setRecoveryMailStatus] = useState({ credentialConfigured: false });
 
   const loadBackupInfo = async () => {
     try {
@@ -23,12 +24,15 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
 
   useEffect(() => {
     loadBackupInfo();
-    getSchoolSettings()
-      .then((settings) => {
+    Promise.all([getSchoolSettings(), getRecoveryMailStatus(currentUser.id)])
+      .then(([settings, mailStatus]) => {
         setSchoolForm({
           schoolName: settings.schoolName,
           whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
+          recoveryEmail: settings.recoveryEmail || '',
+          recoveryAppPassword: '',
         });
+        setRecoveryMailStatus(mailStatus);
         if (onSchoolSettingsChange) onSchoolSettingsChange(settings);
       })
       .catch((error) => {
@@ -46,22 +50,54 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
       const result = await saveSchoolSettings({
         schoolName: schoolForm.schoolName,
         whatsappPhone: getIraqiWhatsAppNumber(schoolForm.whatsappPhone),
+        recoveryEmail: schoolForm.recoveryEmail,
       }, currentUser.id);
       if (!result.ok) {
         setSchoolMessage({ text: result.message || 'تعذر حفظ بيانات المدرسة.', type: 'error' });
         return;
       }
 
+      if (schoolForm.recoveryAppPassword) {
+        const credentialResult = await saveRecoveryMailPassword(schoolForm.recoveryAppPassword, currentUser.id);
+        if (!credentialResult.ok) {
+          setSchoolMessage({ text: credentialResult.message || 'تعذر حفظ إعداد Gmail الآمن.', type: 'error' });
+          return;
+        }
+      }
+
       const settings = result.settings;
       setSchoolForm({
         schoolName: settings.schoolName,
         whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
+        recoveryEmail: settings.recoveryEmail || '',
+        recoveryAppPassword: '',
       });
+      setRecoveryMailStatus(await getRecoveryMailStatus(currentUser.id));
       if (onSchoolSettingsChange) onSchoolSettingsChange(settings);
-      setSchoolMessage({ text: 'تم حفظ بيانات المدرسة بنجاح.', type: 'success' });
+      setSchoolMessage({
+        text: schoolForm.recoveryAppPassword || recoveryMailStatus.credentialConfigured
+          ? 'تم حفظ بيانات المدرسة. يُحفظ سر Gmail مشفراً في خزنة Windows الآمنة ولا يُعرض مجدداً.'
+          : 'تم حفظ بيانات المدرسة. أدخل كلمة مرور تطبيق Gmail واختبر الإرسال لتفعيل استرجاع كلمة المرور.',
+        type: 'success',
+      });
     } catch (error) {
       console.error('Failed to save school settings', error);
       setSchoolMessage({ text: 'حدث خطأ أثناء حفظ بيانات المدرسة.', type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTestRecoveryMail = async () => {
+    setIsLoading(true);
+    setSchoolMessage({ text: '', type: '' });
+    try {
+      const result = await testRecoveryMail(currentUser.id);
+      setSchoolMessage({ text: result.message || 'تعذر اختبار إعداد Gmail.', type: result.ok ? 'success' : 'error' });
+      if (result.ok) setRecoveryMailStatus((status) => ({ ...status, credentialConfigured: true }));
+    } catch (error) {
+      console.error('Failed to test recovery email settings', error);
+      setSchoolMessage({ text: error.message || 'تعذر اختبار إعداد Gmail.', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -270,7 +306,31 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
                     />
                   </span>
                 </label>
+                <label>
+                  البريد الإلكتروني الرسمي للمدرسة (Gmail)
+                  <input
+                    type="email"
+                    value={schoolForm.recoveryEmail}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, recoveryEmail: event.target.value }))}
+                    placeholder="school@gmail.com"
+                    autoComplete="email"
+                  />
+                </label>
+                <label>
+                  كلمة مرور تطبيق Gmail
+                  <input
+                    type="password"
+                    value={schoolForm.recoveryAppPassword}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, recoveryAppPassword: event.target.value }))}
+                    placeholder={recoveryMailStatus.credentialConfigured ? 'مُعدّة مسبقاً؛ اتركها فارغة للإبقاء عليها' : 'أدخل كلمة مرور التطبيق ذات 16 حرفاً'}
+                    autoComplete="new-password"
+                  />
+                </label>
               </div>
+              <p style={{ color: '#94a3b8', marginTop: '12px' }}>
+                يُستخدم البريد لاسترجاع كلمة مرور المدير فقط. أنشئ كلمة مرور تطبيق من إعدادات أمان Google؛ لا تستخدم كلمة مرور Gmail العادية.
+                {recoveryMailStatus.credentialConfigured ? ' بيانات الإرسال محفوظة في خزنة Windows الآمنة.' : ' يلزم حفظ كلمة مرور التطبيق لتفعيل الإرسال.'}
+              </p>
 
               {schoolMessage.text && (
                 <p className={schoolMessage.type === 'error' ? 'form-error' : ''} role="status">
@@ -281,6 +341,9 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
               <div className="modal-actions">
                 <button type="submit" className="btn btn-primary" disabled={isLoading}>
                   {isLoading ? 'جاري الحفظ...' : 'حفظ بيانات المدرسة'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={isLoading} onClick={handleTestRecoveryMail}>
+                  اختبار إرسال Gmail
                 </button>
               </div>
             </form>

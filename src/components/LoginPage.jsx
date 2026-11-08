@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { login } from '../services/databaseApi';
+import {
+  login,
+  requestPasswordRecovery,
+  resetAdministratorPassword,
+  verifyPasswordRecoveryCode,
+} from '../services/databaseApi';
 
 function LoginPage({ onLoginSuccess, initialMessage = '' }) {
   const [username, setUsername] = useState('');
@@ -7,6 +12,14 @@ function LoginPage({ onLoginSuccess, initialMessage = '' }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState('username');
+  const [recoveryUsername, setRecoveryUsername] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
 
   useEffect(() => {
     setError(initialMessage);
@@ -26,6 +39,87 @@ function LoginPage({ onLoginSuccess, initialMessage = '' }) {
       }
     } catch (err) {
       setError('حدث خطأ أثناء محاولة الاتصال بالنظام.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openRecovery = () => {
+    setRecoveryUsername(username.trim());
+    setRecoveryCode('');
+    setResetToken('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRecoveryMessage('');
+    setRecoveryStep('username');
+    setRecoveryMode(true);
+  };
+
+  const handleRequestRecovery = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setRecoveryMessage('');
+    try {
+      const result = await requestPasswordRecovery(recoveryUsername);
+      setRecoveryMessage(result.message);
+      setRecoveryStep('code');
+    } catch (requestError) {
+      console.error('Password recovery request failed');
+      setRecoveryMessage('تعذر إرسال الطلب الآن. تحقق من تشغيل التطبيق وحاول لاحقاً.');
+      setRecoveryStep('code');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyRecoveryCode = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setRecoveryMessage('');
+    try {
+      const result = await verifyPasswordRecoveryCode(recoveryUsername, recoveryCode);
+      if (!result.ok) {
+        setRecoveryMessage(result.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
+        return;
+      }
+      setResetToken(result.resetToken);
+      setRecoveryStep('password');
+      setRecoveryMessage('');
+    } catch (verificationError) {
+      console.error('Password recovery code verification failed');
+      setRecoveryMessage('تعذر التحقق من الرمز. حاول مرة أخرى.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault();
+    if (newPassword.length < 8) {
+      setRecoveryMessage('كلمة المرور يجب أن تتكون من 8 أحرف على الأقل.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setRecoveryMessage('كلمتا المرور غير متطابقتين.');
+      return;
+    }
+    setIsLoading(true);
+    setRecoveryMessage('');
+    try {
+      const result = await resetAdministratorPassword(recoveryUsername, resetToken, newPassword);
+      if (!result.ok) {
+        setRecoveryMessage(result.message || 'تعذر تحديث كلمة المرور. اطلب رمزاً جديداً.');
+        return;
+      }
+      setUsername(recoveryUsername);
+      setPassword('');
+      setRecoveryMode(false);
+      setRecoveryMessage('');
+      setError('');
+      window.alert('تم تحديث كلمة مرور المدير بنجاح. سجّل الدخول باستخدام كلمة المرور الجديدة.');
+    } catch (resetError) {
+      console.error('Administrator password reset failed');
+      setRecoveryMessage('تعذر تحديث كلمة المرور. اطلب رمزاً جديداً.');
     } finally {
       setIsLoading(false);
     }
@@ -197,6 +291,147 @@ function LoginPage({ onLoginSuccess, initialMessage = '' }) {
             {isLoading ? 'جاري التحقق...' : 'دخول للنظام'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={openRecovery}
+          style={{
+            marginTop: '22px',
+            border: 0,
+            background: 'transparent',
+            color: '#93c5fd',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          هل نسيت كلمة المرور؟
+        </button>
+
+        {recoveryMode && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recovery-title"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+              background: 'rgba(2, 6, 23, 0.82)',
+            }}
+          >
+            <section style={{
+              width: '100%',
+              maxWidth: '440px',
+              padding: '28px',
+              borderRadius: '20px',
+              background: '#1e293b',
+              border: '1px solid rgba(255,255,255,0.12)',
+              textAlign: 'right',
+              color: '#e2e8f0',
+            }}>
+              <h2 id="recovery-title" style={{ marginTop: 0 }}>استرجاع كلمة مرور المدير</h2>
+              <p style={{ color: '#94a3b8', lineHeight: 1.7 }}>
+                تُرسل رموز الاسترجاع إلى بريد المدرسة المسجل مسبقاً. لا تتيح هذه الخدمة استرجاع كلمات مرور الموظفين.
+              </p>
+              {recoveryMessage && (
+                <p role="status" style={{ color: '#bfdbfe', lineHeight: 1.6 }}>{recoveryMessage}</p>
+              )}
+
+              {recoveryStep === 'username' && (
+                <form onSubmit={handleRequestRecovery} style={{ display: 'grid', gap: '14px' }}>
+                  <label>
+                    اسم المستخدم
+                    <input
+                      value={recoveryUsername}
+                      onChange={(event) => setRecoveryUsername(event.target.value)}
+                      autoComplete="username"
+                      required
+                      autoFocus
+                      style={{ width: '100%', marginTop: '8px', padding: '12px', boxSizing: 'border-box' }}
+                    />
+                  </label>
+                  <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                    {isLoading ? 'جارٍ إرسال الطلب...' : 'إرسال رمز التحقق'}
+                  </button>
+                </form>
+              )}
+
+              {recoveryStep === 'code' && (
+                <form onSubmit={handleVerifyRecoveryCode} style={{ display: 'grid', gap: '14px' }}>
+                  <label>
+                    رمز التحقق المكوّن من 6 أرقام
+                    <input
+                      value={recoveryCode}
+                      onChange={(event) => setRecoveryCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      required
+                      autoFocus
+                      style={{ width: '100%', marginTop: '8px', padding: '12px', boxSizing: 'border-box', direction: 'ltr' }}
+                    />
+                  </label>
+                  <button type="submit" className="btn btn-primary" disabled={isLoading || recoveryCode.length !== 6}>
+                    {isLoading ? 'جارٍ التحقق...' : 'تحقق من الرمز'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" disabled={isLoading} onClick={() => setRecoveryStep('username')}>
+                    رجوع
+                  </button>
+                </form>
+              )}
+
+              {recoveryStep === 'password' && (
+                <form onSubmit={handleResetPassword} style={{ display: 'grid', gap: '14px' }}>
+                  <label>
+                    كلمة المرور الجديدة (8 أحرف على الأقل)
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      autoComplete="new-password"
+                      minLength={8}
+                      maxLength={256}
+                      required
+                      autoFocus
+                      style={{ width: '100%', marginTop: '8px', padding: '12px', boxSizing: 'border-box' }}
+                    />
+                  </label>
+                  <label>
+                    تأكيد كلمة المرور الجديدة
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
+                      minLength={8}
+                      maxLength={256}
+                      required
+                      style={{ width: '100%', marginTop: '8px', padding: '12px', boxSizing: 'border-box' }}
+                    />
+                  </label>
+                  <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                    {isLoading ? 'جارٍ تحديث كلمة المرور...' : 'حفظ كلمة المرور الجديدة'}
+                  </button>
+                </form>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={isLoading}
+                onClick={() => setRecoveryMode(false)}
+                style={{ width: '100%', marginTop: '14px' }}
+              >
+                إغلاق
+              </button>
+            </section>
+          </div>
+        )}
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
           مدارس المعلم والكتاب الأهلية © 2026

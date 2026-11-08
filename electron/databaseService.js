@@ -1,9 +1,14 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const sqlite3 = require('sqlite3').verbose();
 const { app } = require('electron');
 
 let DATA_DIR, DB_PATH;
+const recoveryHmacKey = crypto.randomBytes(32);
+const recoveryChallenges = new Map();
+const recoveryResetSessions = new Map();
+const recoveryRequestTimes = new Map();
 
 // Database Schema embedded directly to avoid file reading issues in production
 const DATABASE_SCHEMA = `
@@ -204,7 +209,13 @@ CREATE TABLE IF NOT EXISTS academic_years (
 CREATE TABLE IF NOT EXISTS school_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     school_name TEXT NOT NULL DEFAULT 'مدارس المعلم والكتاب الأهلية',
-    whatsapp_phone TEXT NOT NULL DEFAULT ''
+    whatsapp_phone TEXT NOT NULL DEFAULT '',
+    recovery_email TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS password_recovery (
+    username_key TEXT PRIMARY KEY,
+    last_requested_at INTEGER NOT NULL
 );
 `;
 
@@ -270,6 +281,41 @@ function get(query, params = []) {
   });
 }
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(password), salt, 64, { N: 16384, r: 8, p: 1 }, (error, hash) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(`scrypt$${salt.toString('hex')}$${hash.toString('hex')}`);
+    });
+  });
+}
+
+function verifyPassword(password, storedPassword) {
+  if (!String(password || '').length) return false;
+  const stored = String(storedPassword || '');
+  if (stored.startsWith('scrypt$')) {
+    const [, saltHex, hashHex] = stored.split('$');
+    if (!saltHex || !hashHex || !/^[\da-f]{32}$/i.test(saltHex) || !/^[\da-f]{128}$/i.test(hashHex)) return false;
+    const expected = Buffer.from(hashHex, 'hex');
+    return new Promise((resolve, reject) => {
+      crypto.scrypt(String(password), Buffer.from(saltHex, 'hex'), expected.length, { N: 16384, r: 8, p: 1 }, (error, actual) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(expected.length === actual.length && crypto.timingSafeEqual(expected, actual));
+      });
+    });
+  }
+  const actual = Buffer.from(String(password));
+  const expected = Buffer.from(stored);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
 function formatBackupTimestamp(date) {
   const pad = (value) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -312,6 +358,7 @@ async function initializeDatabase() {
     'ALTER TABLE fee_payments ADD COLUMN is_deleted INTEGER DEFAULT 0',
     'ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE school_settings ADD COLUMN recovery_email TEXT NOT NULL DEFAULT ''",
     'ALTER TABLE certificates ADD COLUMN academic_year TEXT',
     'ALTER TABLE certificates ADD COLUMN is_deleted INTEGER DEFAULT 0',
     'ALTER TABLE schedule ADD COLUMN academic_year TEXT',
@@ -334,12 +381,16 @@ async function initializeDatabase() {
   await run("UPDATE users SET is_active = 1 WHERE is_active IS NULL OR role IN ('admin', 'super_admin')");
   await run("UPDATE users SET is_deleted = 0 WHERE is_deleted IS NULL");
   await run("UPDATE users SET role = 'administrative_employee' WHERE role = 'employee'");
+  const legacyPasswords = await all("SELECT id, password FROM users WHERE password NOT LIKE 'scrypt$%'");
+  for (const user of legacyPasswords) {
+    await run('UPDATE users SET password = ? WHERE id = ?', [await hashPassword(user.password), user.id]);
+  }
 
   const currentYear = await get('SELECT * FROM academic_years WHERE is_current = 1');
   if (!currentYear) await run('INSERT OR IGNORE INTO academic_years (year_name, is_current) VALUES (?, ?)', ['2026-2027', 1]);
 
   const adminExists = await get('SELECT * FROM users WHERE username = ?', ['admin']);
-  if (!adminExists) await run('INSERT INTO users (username, password, role, full_name) VALUES (?, ?, ?, ?)', ['admin', 'admin123', 'admin', 'مدير النظام']);
+  if (!adminExists) await run('INSERT INTO users (username, password, role, full_name) VALUES (?, ?, ?, ?)', ['admin', await hashPassword('admin123'), 'admin', 'مدير النظام']);
 
   return { ok: true, path: DB_PATH };
 }
@@ -360,24 +411,29 @@ async function getAppData(academicYear = null) {
 }
 
 async function login(username, password) {
-  const result = await get('SELECT id, username, role, full_name, is_active, is_deleted FROM users WHERE username = ? AND password = ?', [username, password]);
-  if (result) {
-    if (result.is_deleted) {
-      return { ok: false, message: 'هذا الحساب ملغى. يرجى مراجعة مدير المدرسة.' };
-    }
-    if (!result.is_active) {
-      return { ok: false, message: 'هذا الحساب موقوف. يرجى مراجعة مدير المدرسة.' };
-    }
-    await logActivity(result.id, 'LOGIN', 'auth', `تم تسجيل دخول المستخدم ${username}`);
-    return {
-      ok: true,
-      user: {
-        ...result,
-        role: result.role === 'super_admin' ? 'admin' : result.role === 'employee' ? 'administrative_employee' : result.role,
-      },
-    };
+  const usernameValue = String(username || '').trim().slice(0, 128);
+  const passwordValue = String(password || '');
+  if (!usernameValue || !passwordValue || passwordValue.length > 256) {
+    return { ok: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة' };
   }
-  return { ok: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة' };
+  const result = await get('SELECT id, username, password, role, full_name, is_active, is_deleted FROM users WHERE lower(username) = lower(?)', [usernameValue]);
+  if (!result || !await verifyPassword(passwordValue, result.password)) {
+    return { ok: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة' };
+  }
+  if (result.is_deleted) return { ok: false, message: 'هذا الحساب ملغى. يرجى مراجعة مدير المدرسة.' };
+  if (!result.is_active) return { ok: false, message: 'هذا الحساب موقوف. يرجى مراجعة مدير المدرسة.' };
+  if (!String(result.password).startsWith('scrypt$')) {
+    await run('UPDATE users SET password = ? WHERE id = ?', [await hashPassword(passwordValue), result.id]);
+  }
+  await logActivity(result.id, 'LOGIN', 'auth', `تم تسجيل دخول المستخدم ${result.username}`);
+  const { password: storedPassword, ...user } = result;
+  return {
+    ok: true,
+    user: {
+      ...user,
+      role: user.role === 'super_admin' ? 'admin' : user.role === 'employee' ? 'administrative_employee' : user.role,
+    },
+  };
 }
 
 async function validateUserSession(userId) {
@@ -396,17 +452,22 @@ async function getLogs() { return all('SELECT l.*, u.full_name as user_name FROM
 async function getAcademicYears() { return all('SELECT * FROM academic_years ORDER BY year_name DESC'); }
 
 async function getSchoolSettings() {
-  const settings = await get('SELECT school_name, whatsapp_phone FROM school_settings WHERE id = 1');
+  const settings = await get('SELECT school_name, whatsapp_phone, recovery_email FROM school_settings WHERE id = 1');
   return {
     schoolName: settings?.school_name || 'مدارس المعلم والكتاب الأهلية',
     whatsappPhone: settings?.whatsapp_phone || '',
+    recoveryEmail: settings?.recovery_email || '',
   };
 }
 
 async function saveSchoolSettings(settings, userId) {
   const schoolName = String(settings?.schoolName || '').trim();
   const whatsappPhone = String(settings?.whatsappPhone || '').replace(/\D/g, '');
+  const recoveryEmail = String(settings?.recoveryEmail || '').trim().toLowerCase();
 
+  if (!await requireActiveAdmin(userId)) {
+    return { ok: false, message: 'تعديل بيانات المدرسة متاح لمدير المدرسة فقط.' };
+  }
   if (!schoolName) {
     return { ok: false, message: 'يرجى إدخال اسم المدرسة.' };
   }
@@ -416,12 +477,15 @@ async function saveSchoolSettings(settings, userId) {
   if (!/^9647\d{9}$/.test(whatsappPhone)) {
     return { ok: false, message: 'يرجى إدخال رقم واتساب عراقي صحيح يبدأ بـ +9647.' };
   }
+  if (recoveryEmail && (recoveryEmail.length > 254 || !/^[^\s@]+@gmail\.com$/i.test(recoveryEmail))) {
+    return { ok: false, message: 'يرجى إدخال عنوان Gmail صحيح لاسترجاع كلمة مرور المدير.' };
+  }
 
   await run(
-    `INSERT INTO school_settings (id, school_name, whatsapp_phone)
-     VALUES (1, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET school_name = excluded.school_name, whatsapp_phone = excluded.whatsapp_phone`,
-    [schoolName, whatsappPhone],
+    `INSERT INTO school_settings (id, school_name, whatsapp_phone, recovery_email)
+     VALUES (1, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET school_name = excluded.school_name, whatsapp_phone = excluded.whatsapp_phone, recovery_email = excluded.recovery_email`,
+    [schoolName, whatsappPhone, recoveryEmail],
   );
   await logActivity(userId, 'UPDATE', 'settings', 'تحديث بيانات المدرسة');
   return { ok: true, settings: await getSchoolSettings() };
@@ -459,6 +523,110 @@ async function requireActiveAdmin(userId) {
   return Boolean(actor?.is_active && !actor.is_deleted && ['admin', 'super_admin'].includes(actor.role));
 }
 
+async function isActiveAdmin(userId) {
+  return requireActiveAdmin(userId);
+}
+
+async function requestPasswordRecovery(username, sendCode) {
+  const normalizedUsername = String(username || '').trim().toLowerCase().slice(0, 128);
+  const response = {
+    ok: true,
+    message: 'إذا كان اسم المستخدم يخص مدير المدرسة وكان البريد مضبوطاً، فسيصل رمز التحقق إلى البريد المسجل.',
+  };
+  if (!normalizedUsername) return response;
+
+  const user = await get(
+    `SELECT id FROM users WHERE lower(username) = ? AND role IN ('admin', 'super_admin')
+     AND is_active = 1 AND COALESCE(is_deleted, 0) = 0`,
+    [normalizedUsername],
+  );
+  const settings = await get('SELECT recovery_email FROM school_settings WHERE id = 1');
+  const recoveryEmail = String(settings?.recovery_email || '').trim();
+  if (!user || !recoveryEmail || typeof sendCode !== 'function') return response;
+
+  const usernameKey = crypto.createHash('sha256').update(normalizedUsername).digest('hex');
+  const now = Date.now();
+  const rateLimit = await get('SELECT last_requested_at FROM password_recovery WHERE username_key = ?', [usernameKey]);
+  if (rateLimit && now - rateLimit.last_requested_at < 60_000) return response;
+  await run(
+    `INSERT INTO password_recovery (username_key, last_requested_at) VALUES (?, ?)
+     ON CONFLICT(username_key) DO UPDATE SET last_requested_at = excluded.last_requested_at`,
+    [usernameKey, now],
+  );
+
+  const code = String(crypto.randomInt(100000, 1_000_000));
+  const codeHash = crypto.createHmac('sha256', recoveryHmacKey).update(`${user.id}:${code}`).digest();
+  recoveryChallenges.set(user.id, { codeHash, expiresAt: now + 10 * 60_000, attempts: 0 });
+  recoveryResetSessions.delete(user.id);
+  Promise.resolve()
+    .then(() => sendCode(recoveryEmail, code))
+    .catch(async (error) => {
+      if (recoveryChallenges.get(user.id)?.codeHash === codeHash) recoveryChallenges.delete(user.id);
+      await run('DELETE FROM password_recovery WHERE username_key = ?', [usernameKey]);
+      console.error('Failed to send password recovery email:', error?.code || 'unknown');
+    });
+  return response;
+}
+
+async function verifyPasswordRecoveryCode(username, code) {
+  const normalizedUsername = String(username || '').trim().toLowerCase().slice(0, 128);
+  const user = await get(
+    `SELECT id FROM users WHERE lower(username) = ? AND role IN ('admin', 'super_admin')
+     AND is_active = 1 AND COALESCE(is_deleted, 0) = 0`,
+    [normalizedUsername],
+  );
+  const challenge = user ? recoveryChallenges.get(user.id) : null;
+  if (!challenge || challenge.expiresAt <= Date.now() || challenge.attempts >= 5) {
+    if (user) recoveryChallenges.delete(user.id);
+    return { ok: false, message: 'رمز التحقق غير صحيح أو منتهي الصلاحية.' };
+  }
+
+  challenge.attempts += 1;
+  const submittedCode = String(code || '').slice(0, 7);
+  const actualHash = crypto.createHmac('sha256', recoveryHmacKey)
+    .update(`${user.id}:${submittedCode}`).digest();
+  if (!/^\d{6}$/.test(submittedCode)
+    || actualHash.length !== challenge.codeHash.length
+    || !crypto.timingSafeEqual(actualHash, challenge.codeHash)) {
+    if (challenge.attempts >= 5) recoveryChallenges.delete(user.id);
+    return { ok: false, message: 'رمز التحقق غير صحيح أو منتهي الصلاحية.' };
+  }
+
+  recoveryChallenges.delete(user.id);
+  const token = crypto.randomBytes(32).toString('hex');
+  recoveryResetSessions.set(user.id, {
+    tokenHash: crypto.createHash('sha256').update(token).digest(),
+    expiresAt: Date.now() + 10 * 60_000,
+  });
+  return { ok: true, resetToken: token };
+}
+
+async function resetAdministratorPassword(username, resetToken, newPassword) {
+  const normalizedUsername = String(username || '').trim().toLowerCase().slice(0, 128);
+  const user = await get(
+    `SELECT id, full_name FROM users WHERE lower(username) = ? AND role IN ('admin', 'super_admin')
+     AND is_active = 1 AND COALESCE(is_deleted, 0) = 0`,
+    [normalizedUsername],
+  );
+  const session = user ? recoveryResetSessions.get(user.id) : null;
+  const tokenValue = String(resetToken || '');
+  const suppliedTokenHash = crypto.createHash('sha256').update(tokenValue.slice(0, 64)).digest();
+  if (!/^[\da-f]{64}$/i.test(tokenValue) || !session || session.expiresAt <= Date.now()
+    || !crypto.timingSafeEqual(session.tokenHash, suppliedTokenHash)) {
+    if (user) recoveryResetSessions.delete(user.id);
+    return { ok: false, message: 'جلسة استرجاع كلمة المرور غير صالحة أو منتهية.' };
+  }
+  const password = String(newPassword || '');
+  if (password.length < 8 || password.length > 256) {
+    return { ok: false, message: 'كلمة المرور يجب أن تتكون من 8 إلى 256 حرفاً.' };
+  }
+
+  recoveryResetSessions.delete(user.id);
+  await run('UPDATE users SET password = ? WHERE id = ?', [await hashPassword(password), user.id]);
+  await logActivity(user.id, 'UPDATE', 'auth', 'إعادة تعيين كلمة مرور مدير المدرسة عبر البريد الإلكتروني');
+  return { ok: true };
+}
+
 async function getUsers(actorId) {
   if (!await requireActiveAdmin(actorId)) throw new Error('إدارة حسابات الموظفين متاحة لمدير المدرسة فقط.');
   return all(`SELECT id, username, role, full_name, COALESCE(is_active, 1) AS is_active, created_at
@@ -471,7 +639,7 @@ async function createUser(payload, userId) {
   const username = String(payload?.username || '').trim();
   const password = String(payload?.password || '');
   const role = payload?.role;
-  if (!fullName || !username || password.length < 6 || !['accounting_employee', 'administrative_employee'].includes(role)) {
+  if (!fullName || !username || username.length > 128 || password.length < 6 || password.length > 256 || !['accounting_employee', 'administrative_employee'].includes(role)) {
     return { ok: false, message: 'أدخل الاسم واسم المستخدم وكلمة مرور من 6 أحرف على الأقل واختر نوع الموظف.' };
   }
   const existingUser = await get(
@@ -494,7 +662,7 @@ async function createUser(payload, userId) {
   try {
     row = await run(
       'INSERT INTO users (username, password, role, full_name, is_active) VALUES (?, ?, ?, ?, 1)',
-      [username, password, role, fullName],
+      [username, await hashPassword(password), role, fullName],
     );
   } catch (error) {
     if (error.code === 'SQLITE_CONSTRAINT' || error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -539,12 +707,42 @@ async function updateUserPassword(id, newPassword, userId) {
   if (Number(id) !== Number(userId) && ['admin', 'super_admin'].includes(user.role)) {
     return { ok: false, message: 'لا يمكن إعادة تعيين كلمة مرور حساب مدير آخر.' };
   }
-  if (String(newPassword || '').length < 6) {
-    return { ok: false, message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' };
+  if (String(newPassword || '').length < 6 || String(newPassword || '').length > 256) {
+    return { ok: false, message: 'كلمة المرور يجب أن تتكون من 6 إلى 256 حرفاً.' };
   }
-  await run('UPDATE users SET password = ? WHERE id = ?', [newPassword, id]);
+  await run('UPDATE users SET password = ? WHERE id = ?', [await hashPassword(newPassword), id]);
   await logActivity(userId, 'UPDATE', 'users', `تغيير كلمة المرور للمستخدم: ${user.full_name}`);
   return { ok: true };
+}
+
+async function updateOwnUsername(id, newUsername, currentPassword, userId) {
+  const actor = await getActor(userId);
+  if (!actor?.is_active || actor.is_deleted || Number(id) !== Number(userId)
+    || !['admin', 'super_admin'].includes(actor.role)) {
+    return { ok: false, message: 'تغيير اسم المستخدم متاح لمدير المدرسة لحسابه فقط.' };
+  }
+
+  const username = String(newUsername || '').trim();
+  if (!username || username.length > 128) return { ok: false, message: 'يرجى إدخال اسم مستخدم صالح.' };
+
+  const user = await get('SELECT username, password FROM users WHERE id = ?', [id]);
+  if (!user) return { ok: false, message: 'الحساب غير موجود.' };
+  if (!await verifyPassword(currentPassword, user.password)) {
+    return { ok: false, message: 'كلمة المرور الحالية غير صحيحة.' };
+  }
+  const duplicate = await get('SELECT id FROM users WHERE lower(username) = lower(?) AND id != ?', [username, id]);
+  if (duplicate) return { ok: false, message: 'اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر.' };
+
+  try {
+    await run('UPDATE users SET username = ? WHERE id = ?', [username, id]);
+  } catch (error) {
+    if (error.code === 'SQLITE_CONSTRAINT' || error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return { ok: false, message: 'اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر.' };
+    }
+    throw error;
+  }
+  await logActivity(userId, 'UPDATE', 'users', `تغيير اسم المستخدم من ${user.username} إلى ${username}`);
+  return { ok: true, username };
 }
 
 async function createStudent(payload, userId, academicYear) {
@@ -1335,7 +1533,7 @@ function mapPaymentRow(row) {
 }
 
 module.exports = {
-  initializeDatabase, getAppData, login, validateUserSession, getLogs, getAcademicYears, getUsers, createUser, deleteUser, setUserActive, updateUserPassword,
+  initializeDatabase, getAppData, login, validateUserSession, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, isActiveAdmin, getLogs, getAcademicYears, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername,
   createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   saveAttendanceRecords, listAttendanceForDate, getEnrichedAttendance, saveExamResults, getExamResults, getExamsStats, createExam, updateExam, deleteExam, createFeePayment, updateGradeFee, applyGradeFeeToAll, getFees,

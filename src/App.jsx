@@ -45,6 +45,7 @@ import {
   getLogs,
   getSchoolSettings,
   validateUserSession,
+  logout,
 } from './services/databaseApi';
 
 const modules = [
@@ -737,7 +738,12 @@ function App() {
           <button
             className="nav-btn"
             style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-            onClick={() => {
+            onClick={async () => {
+              try {
+                await logout();
+              } catch (error) {
+                console.error('Failed to clear authenticated application session', error);
+              }
               setCurrentUser(null);
               setActiveModule('dashboard');
               setViewingStudentId(null);
@@ -956,7 +962,7 @@ function App() {
             }}
           />
         ) : activeModule === 'account' ? (
-          <UserManagement currentUser={currentUser} isAdmin={false} />
+          <UserManagement currentUser={currentUser} isAdmin={false} onUserUpdate={setCurrentUser} />
         ) : (
           <section className="cards">
             <article className="card">

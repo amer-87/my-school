@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { createUser, deleteUser, getUsers, setUserActive, updateUserPassword } from '../services/databaseApi';
+import { createUser, deleteUser, getUsers, setUserActive, updateOwnUsername, updateUserPassword } from '../services/databaseApi';
 
 const initialNewUser = { username: '', password: '', role: 'administrative_employee', fullName: '' };
 const roleLabels = {
@@ -10,9 +10,12 @@ const roleLabels = {
   employee: 'موظف إداري',
 };
 
-function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin' }) {
+function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin', onUserUpdate }) {
+  const isOwner = ['admin', 'super_admin'].includes(currentUser?.role);
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(initialNewUser);
+  const [username, setUsername] = useState(currentUser.username || '');
+  const [usernamePassword, setUsernamePassword] = useState('');
   const [passData, setPassData] = useState({ newPass: '', confirmPass: '' });
   const [resetTarget, setResetTarget] = useState(null);
   const [resetPassword, setResetPassword] = useState('');
@@ -110,6 +113,33 @@ function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin' }
     }
   };
 
+  const handleUpdateUsername = async (event) => {
+    event.preventDefault();
+    const nextUsername = username.trim();
+    if (!nextUsername) {
+      setMessage({ text: 'يرجى إدخال اسم مستخدم صالح.', type: 'error' });
+      return;
+    }
+    setSaving(true);
+    setMessage({ text: '', type: '' });
+    try {
+      const result = await updateOwnUsername(currentUser.id, nextUsername, usernamePassword, currentUser.id);
+      if (!result?.ok) {
+        setMessage({ text: result?.message || 'تعذر تغيير اسم المستخدم.', type: 'error' });
+        return;
+      }
+      setUsername(result.username);
+      setUsernamePassword('');
+      onUserUpdate?.({ ...currentUser, username: result.username });
+      setMessage({ text: 'تم تغيير اسم المستخدم بنجاح. استخدم الاسم الجديد عند تسجيل الدخول لاحقاً.', type: 'success' });
+    } catch (error) {
+      console.error('Failed to update own username', error);
+      setMessage({ text: error.message || 'تعذر تغيير اسم المستخدم.', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleResetPassword = async (event) => {
     event.preventDefault();
     if (resetPassword.length < 6) {
@@ -186,6 +216,43 @@ function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin' }
         <p className={message.type === 'error' ? 'form-error' : ''} role="status">
           {message.text}
         </p>
+      )}
+
+      {isOwner && (
+        <div className="table-card" style={{ marginBottom: '24px' }}>
+          <div className="table-toolbar">
+            <div>
+              <h3>تغيير اسم المستخدم</h3>
+              <p>يمكن لمدير المدرسة تحديث اسم المستخدم الخاص به.</p>
+            </div>
+          </div>
+          <form onSubmit={handleUpdateUsername} className="modal-form" style={{ padding: '24px' }}>
+            <div className="form-grid">
+              <label>
+                اسم المستخدم الجديد
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label>
+                كلمة المرور الحالية للتأكيد
+                <input
+                  type="password"
+                  value={usernamePassword}
+                  onChange={(event) => setUsernamePassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+            </div>
+            <div style={{ marginTop: '20px' }}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>تحديث اسم المستخدم</button>
+            </div>
+          </form>
+        </div>
       )}
 
       <div className="table-card" style={{ marginBottom: isAdmin ? '24px' : 0 }}>

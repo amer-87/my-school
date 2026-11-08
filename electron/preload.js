@@ -41,11 +41,13 @@ const electronAPI = {
   createExpense: (payload, userId, academicYear) => ipcRenderer.invoke('db:createExpense', payload, userId, academicYear),
   updateExpenseStatus: (id, status, userId) => ipcRenderer.invoke('db:updateExpenseStatus', id, status, userId),
   login: (username, password) => ipcRenderer.invoke('db:login', username, password),
-  validateUserSession: (userId) => ipcRenderer.invoke('db:validateUserSession', userId),
+  validateUserSession: () => ipcRenderer.invoke('db:validateUserSession'),
+  logout: () => ipcRenderer.invoke('auth:logout'),
   getUsers: (userId) => ipcRenderer.invoke('db:getUsers', userId),
   createUser: (payload, userId) => ipcRenderer.invoke('db:createUser', payload, userId),
   deleteUser: (id, userId) => ipcRenderer.invoke('db:deleteUser', id, userId),
   updateUserPassword: (id, newPassword, userId) => ipcRenderer.invoke('db:updateUserPassword', id, newPassword, userId),
+  updateOwnUsername: (id, newUsername, currentPassword, userId) => ipcRenderer.invoke('db:updateOwnUsername', id, newUsername, currentPassword, userId),
   setUserActive: (id, isActive, userId) => ipcRenderer.invoke('db:setUserActive', id, isActive, userId),
   updateGradeFee: (gradeId, amount, currency, userId) => ipcRenderer.invoke('db:updateGradeFee', gradeId, amount, currency, userId),
   applyGradeFeeToAll: (gradeId, amount, userId) => ipcRenderer.invoke('db:applyGradeFeeToAll', gradeId, amount, userId),
@@ -57,6 +59,12 @@ const electronAPI = {
   setCurrentAcademicYear: (yearName, userId) => ipcRenderer.invoke('db:setCurrentAcademicYear', yearName, userId),
   getSchoolSettings: () => ipcRenderer.invoke('db:getSchoolSettings'),
   saveSchoolSettings: (settings, userId) => ipcRenderer.invoke('db:saveSchoolSettings', settings, userId),
+  saveRecoveryMailPassword: (password, userId) => ipcRenderer.invoke('security:saveRecoveryMailPassword', password, userId),
+  getRecoveryMailStatus: (userId) => ipcRenderer.invoke('security:getRecoveryMailStatus', userId),
+  testRecoveryMail: (userId) => ipcRenderer.invoke('security:testRecoveryMail', userId),
+  requestPasswordRecovery: (username) => ipcRenderer.invoke('security:requestPasswordRecovery', username),
+  verifyPasswordRecoveryCode: (username, code) => ipcRenderer.invoke('security:verifyPasswordRecoveryCode', username, code),
+  resetAdministratorPassword: (username, token, password) => ipcRenderer.invoke('security:resetAdministratorPassword', username, token, password),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
