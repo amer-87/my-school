@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createBackup, getLatestBackupInfo, restoreBackup } from '../services/databaseApi';
+import { compareArabicNames, sortStudentsAlphabetically } from '../services/studentService';
 
 const attendanceData = [
   { studentId: 1, studentName: 'أحمد محمد علي', status: 'حاضر', date: '2026-07-30' },
@@ -29,10 +30,10 @@ function ReportsPage({ students }) {
 
   const filteredStudents = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return students.filter((student) => {
+    return sortStudentsAlphabetically(students.filter((student) => {
       const haystack = `${student.fullName} ${student.grade} ${student.division} ${student.phone}`.toLowerCase();
       return (!term || haystack.includes(term));
-    });
+    }));
   }, [searchTerm, students]);
 
   const filteredAttendance = useMemo(() => {
@@ -41,7 +42,7 @@ function ReportsPage({ students }) {
       const haystack = `${item.studentName} ${item.status}`.toLowerCase();
       const matchesFilter = statusFilter === 'all' || item.status === statusFilter;
       return matchesFilter && (!term || haystack.includes(term));
-    });
+    }).sort((first, second) => compareArabicNames(first.studentName, second.studentName));
   }, [searchTerm, statusFilter]);
 
   const filteredGrades = useMemo(() => {
@@ -49,7 +50,7 @@ function ReportsPage({ students }) {
     return gradesData.filter((item) => {
       const haystack = `${item.studentName} ${item.subject} ${item.grade}`.toLowerCase();
       return !term || haystack.includes(term);
-    });
+    }).sort((first, second) => compareArabicNames(first.studentName, second.studentName));
   }, [searchTerm]);
 
   const filteredFees = useMemo(() => {
@@ -57,7 +58,7 @@ function ReportsPage({ students }) {
     return feeData.filter((item) => {
       const haystack = `${item.studentName} ${item.status}`.toLowerCase();
       return !term || haystack.includes(term);
-    });
+    }).sort((first, second) => compareArabicNames(first.studentName, second.studentName));
   }, [searchTerm]);
 
   useEffect(() => {

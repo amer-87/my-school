@@ -1,6 +1,6 @@
 import React from 'react';
 
-function ReceiptPreview({ receiptData, onBack }) {
+function ReceiptPreview({ receiptData, onBack, schoolSettings = {}, currentAcademicYear }) {
   if (!receiptData) return null;
 
   const handlePrint = () => {
@@ -28,14 +28,14 @@ function ReceiptPreview({ receiptData, onBack }) {
         <div className="receipt-header">
           <div className="header-top">
             <div className="school-info">
-              <h2 className="school-name">مدارس المعلم والكتاب الأهلية</h2>
-              <p className="school-subtitle">ابتدائية مختلطة - ثانوية بنين</p>
+              <h2 className="school-name">{schoolSettings.schoolName || 'مدارس المعلم والكتاب الأهلية'}</h2>
+              {schoolSettings.schoolType && <p className="school-subtitle">{schoolSettings.schoolType}</p>}
             </div>
             <div className="school-logo">
               <div className="logo-placeholder">🎓</div>
             </div>
             <div className="academic-year">
-              العام الدراسي 2026-2027
+              العام الدراسي {currentAcademicYear || ''}
             </div>
           </div>
           <div className="header-divider"></div>
@@ -70,7 +70,7 @@ function ReceiptPreview({ receiptData, onBack }) {
               <span className="amount-num">{formatCurrency(receiptData.payment?.amount)}</span>
               <span className="amount-txt">دينار عراقي</span>
             </div>
-            <p className="payment-reason">وذلك عن تسديد قسط دراسي.</p>
+            <p className="payment-reason">وذلك عن تسديد الرسوم الدراسية.</p>
           </div>
 
           <div className="signatures-area">
@@ -87,14 +87,18 @@ function ReceiptPreview({ receiptData, onBack }) {
 
         <div className="receipt-footer">
           <div className="footer-info-bar">
-            <div className="info-item">
-              <span className="info-icon">📞</span>
-              <span>للاستفسار والتسجيل: 07712447347</span>
-            </div>
-            <div className="info-item">
-              <span className="info-icon">📍</span>
-              <span>العنوان: البصرة - خلف جامع البصرة الكبير</span>
-            </div>
+            {schoolSettings.schoolPhone && (
+              <div className="info-item">
+                <span className="info-icon">📞</span>
+                <span>للاستفسار والتسجيل: {schoolSettings.schoolPhone}</span>
+              </div>
+            )}
+            {schoolSettings.schoolAddress && (
+              <div className="info-item">
+                <span className="info-icon">📍</span>
+                <span>العنوان: {schoolSettings.schoolAddress}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,4 +1,6 @@
 // Database API Service
+import { compareArabicNames, sortStudentsAlphabetically } from './studentService';
+
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 
 async function initializeDatabase() {
@@ -8,7 +10,10 @@ async function initializeDatabase() {
 
 async function getAppData(academicYear) {
   if (!electronApi?.getAppData) return { students: [], teachers: [], grades: [], divisions: [], exams: [], attendance: [], fees: [], certificates: [] };
-  return electronApi.getAppData(academicYear);
+  const data = await electronApi.getAppData(academicYear);
+  return Array.isArray(data?.students)
+    ? { ...data, students: sortStudentsAlphabetically(data.students) }
+    : data;
 }
 
 async function createStudent(payload, userId, academicYear) {
@@ -96,7 +101,14 @@ async function getAttendanceForDate(date) {
 }
 
 async function getEnrichedAttendance(date) {
-  return electronApi?.getEnrichedAttendance ? electronApi.getEnrichedAttendance(date) : [];
+  if (!electronApi?.getEnrichedAttendance) return [];
+  const records = await electronApi.getEnrichedAttendance(date);
+  if (!Array.isArray(records)) return records;
+  return [...records].sort((first, second) =>
+    compareArabicNames(first.grade_name, second.grade_name)
+    || compareArabicNames(first.division_name, second.division_name)
+    || compareArabicNames(first.student_name, second.student_name)
+  );
 }
 
 async function saveAttendanceRecords(date, rows, userId, academicYear) {
@@ -109,13 +121,6 @@ async function createFeePayment(studentId, payload, userId, academicYear) {
 
 async function getFees(academicYear) {
   return electronApi?.getFees ? electronApi.getFees(academicYear) : [];
-}
-
-async function generateTuitionInstallments(firstDueDate, academicYear, userId) {
-  if (!electronApi?.generateTuitionInstallments) {
-    throw new Error('إدارة الأقساط متاحة من تطبيق سطح المكتب فقط.');
-  }
-  return electronApi.generateTuitionInstallments(firstDueDate, academicYear, userId);
 }
 
 async function getTuitionExpenses(academicYear) {
@@ -258,7 +263,14 @@ async function setCurrentAcademicYear(yearName, userId) {
 async function getSchoolSettings() {
   return electronApi?.getSchoolSettings
     ? electronApi.getSchoolSettings()
-    : { schoolName: 'مدارس المعلم والكتاب الأهلية', whatsappPhone: '', recoveryEmail: '' };
+    : {
+      schoolName: 'مدارس المعلم والكتاب الأهلية',
+      whatsappPhone: '',
+      recoveryEmail: '',
+      schoolType: '',
+      schoolAddress: '',
+      schoolPhone: '',
+    };
 }
 
 async function saveSchoolSettings(settings, userId) {
@@ -268,9 +280,9 @@ async function saveSchoolSettings(settings, userId) {
   return electronApi.saveSchoolSettings(settings, userId);
 }
 
-async function saveRecoveryMailPassword(password, userId) {
+async function saveRecoveryMailPassword(email, password, userId) {
   if (!electronApi?.saveRecoveryMailPassword) throw new Error('إعداد بريد الاسترجاع متاح من تطبيق سطح المكتب فقط.');
-  return electronApi.saveRecoveryMailPassword(password, userId);
+  return electronApi.saveRecoveryMailPassword(email, password, userId);
 }
 
 async function getRecoveryMailStatus(userId) {
@@ -287,7 +299,7 @@ export {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
-  createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
+  createFeePayment, getFees, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
   login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail
@@ -297,7 +309,7 @@ export default {
   initializeDatabase, getAppData, createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
-  createFeePayment, getFees, generateTuitionInstallments, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
+  createFeePayment, getFees, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
   login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail

@@ -1,6 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getEnrichedAttendance } from '../services/databaseApi';
 
 function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademicYear }) {
+  const [todayAttendance, setTodayAttendance] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+  const [attendanceError, setAttendanceError] = useState('');
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  const todayDate = today.toISOString().slice(0, 10);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+    setAttendanceLoading(true);
+    setAttendanceError('');
+
+    getEnrichedAttendance(todayDate)
+      .then((records) => {
+        if (isCurrentRequest) setTodayAttendance(Array.isArray(records) ? records : []);
+      })
+      .catch((error) => {
+        console.error('Failed to load dashboard attendance', error);
+        if (isCurrentRequest) setAttendanceError('تعذر تحميل إحصائيات الحضور لهذا اليوم.');
+      })
+      .finally(() => {
+        if (isCurrentRequest) setAttendanceLoading(false);
+      });
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [todayDate]);
+
+  const attendanceCounts = todayAttendance.reduce((counts, record) => {
+    if (record.status === 'حاضر') counts.present += 1;
+    if (record.status === 'غائب') counts.absent += 1;
+    if (record.status === 'إجازة') counts.leave += 1;
+    return counts;
+  }, { present: 0, absent: 0, leave: 0 });
+
+  const formattedToday = new Intl.DateTimeFormat('ar-IQ', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(today);
+
   // Calculate stats
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
@@ -52,6 +95,46 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
           </div>
         </div>
       </div>
+
+      <section className="dashboard-attendance" aria-labelledby="dashboard-attendance-title">
+        <div className="dashboard-attendance-header">
+          <div>
+            <h3 id="dashboard-attendance-title">ملخص الحضور اليومي</h3>
+            <p>إحصائيات الحالات المسجلة لهذا اليوم{!attendanceLoading && ` · إجمالي السجلات: ${todayAttendance.length}`}</p>
+          </div>
+          <span className="dashboard-attendance-date">{formattedToday}</span>
+        </div>
+        {attendanceError ? (
+          <p className="dashboard-attendance-error" role="alert">{attendanceError}</p>
+        ) : (
+          <div className="dashboard-attendance-grid" aria-busy={attendanceLoading}>
+            <article className="dashboard-attendance-card present">
+              <span className="dashboard-attendance-icon" aria-hidden="true">✓</span>
+              <div>
+                <span className="dashboard-attendance-label">الحاضرون</span>
+                <strong>{attendanceLoading ? '—' : attendanceCounts.present}</strong>
+                <span className="dashboard-attendance-caption">طالب مسجل حضوره</span>
+              </div>
+            </article>
+            <article className="dashboard-attendance-card absent">
+              <span className="dashboard-attendance-icon" aria-hidden="true">×</span>
+              <div>
+                <span className="dashboard-attendance-label">الغائبون</span>
+                <strong>{attendanceLoading ? '—' : attendanceCounts.absent}</strong>
+                <span className="dashboard-attendance-caption">طالب مسجل غيابه</span>
+              </div>
+            </article>
+            <article className="dashboard-attendance-card leave">
+              <span className="dashboard-attendance-icon" aria-hidden="true">◷</span>
+              <div>
+                <span className="dashboard-attendance-label">المجازون</span>
+                <strong>{attendanceLoading ? '—' : attendanceCounts.leave}</strong>
+                <span className="dashboard-attendance-caption">طالب بإجازة</span>
+              </div>
+            </article>
+          </div>
+        )}
+      </section>
 
       <div className="dashboard-main-grid">
         <div className="dashboard-section late-payments">

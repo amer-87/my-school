@@ -9,7 +9,15 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
   const [message, setMessage] = useState({ text: '', type: '' });
   const [activeTab, setActiveTab] = useState('years'); // Default to 'years'
   const [newYearName, setNewYearName] = useState('');
-  const [schoolForm, setSchoolForm] = useState({ schoolName: '', whatsappPhone: '', recoveryEmail: '', recoveryAppPassword: '' });
+  const [schoolForm, setSchoolForm] = useState({
+    schoolName: '',
+    schoolType: '',
+    schoolAddress: '',
+    schoolPhone: '',
+    whatsappPhone: '',
+    recoveryEmail: '',
+    recoveryAppPassword: '',
+  });
   const [schoolMessage, setSchoolMessage] = useState({ text: '', type: '' });
   const [recoveryMailStatus, setRecoveryMailStatus] = useState({ credentialConfigured: false });
 
@@ -28,6 +36,9 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
       .then(([settings, mailStatus]) => {
         setSchoolForm({
           schoolName: settings.schoolName,
+          schoolType: settings.schoolType || '',
+          schoolAddress: settings.schoolAddress || '',
+          schoolPhone: settings.schoolPhone || '',
           whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
           recoveryEmail: settings.recoveryEmail || '',
           recoveryAppPassword: '',
@@ -47,10 +58,27 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
     setSchoolMessage({ text: '', type: '' });
 
     try {
+      const recoveryEmail = schoolForm.recoveryEmail.trim().toLowerCase();
+      const savedCredentialEmail = String(recoveryMailStatus.credentialEmail || '').trim().toLowerCase();
+      const needsNewCredential = Boolean(
+        recoveryEmail
+        && (!recoveryMailStatus.credentialConfigured || recoveryEmail !== savedCredentialEmail),
+      );
+      if (needsNewCredential && !schoolForm.recoveryAppPassword) {
+        setSchoolMessage({
+          text: 'عنوان Gmail جديد أو لا توجد كلمة مرور تطبيق مرتبطة به. أدخل كلمة مرور تطبيق أنشأتها لهذا الحساب قبل الحفظ.',
+          type: 'error',
+        });
+        return;
+      }
+
       const result = await saveSchoolSettings({
         schoolName: schoolForm.schoolName,
+        schoolType: schoolForm.schoolType,
+        schoolAddress: schoolForm.schoolAddress,
+        schoolPhone: schoolForm.schoolPhone,
         whatsappPhone: getIraqiWhatsAppNumber(schoolForm.whatsappPhone),
-        recoveryEmail: schoolForm.recoveryEmail,
+        recoveryEmail,
       }, currentUser.id);
       if (!result.ok) {
         setSchoolMessage({ text: result.message || 'تعذر حفظ بيانات المدرسة.', type: 'error' });
@@ -58,7 +86,11 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
       }
 
       if (schoolForm.recoveryAppPassword) {
-        const credentialResult = await saveRecoveryMailPassword(schoolForm.recoveryAppPassword, currentUser.id);
+        const credentialResult = await saveRecoveryMailPassword(
+          recoveryEmail,
+          schoolForm.recoveryAppPassword,
+          currentUser.id,
+        );
         if (!credentialResult.ok) {
           setSchoolMessage({ text: credentialResult.message || 'تعذر حفظ إعداد Gmail الآمن.', type: 'error' });
           return;
@@ -68,6 +100,9 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
       const settings = result.settings;
       setSchoolForm({
         schoolName: settings.schoolName,
+        schoolType: settings.schoolType || '',
+        schoolAddress: settings.schoolAddress || '',
+        schoolPhone: settings.schoolPhone || '',
         whatsappPhone: getIraqiLocalPhone(settings.whatsappPhone),
         recoveryEmail: settings.recoveryEmail || '',
         recoveryAppPassword: '',
@@ -75,9 +110,7 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
       setRecoveryMailStatus(await getRecoveryMailStatus(currentUser.id));
       if (onSchoolSettingsChange) onSchoolSettingsChange(settings);
       setSchoolMessage({
-        text: schoolForm.recoveryAppPassword || recoveryMailStatus.credentialConfigured
-          ? 'تم حفظ بيانات المدرسة. يُحفظ سر Gmail مشفراً في خزنة Windows الآمنة ولا يُعرض مجدداً.'
-          : 'تم حفظ بيانات المدرسة. أدخل كلمة مرور تطبيق Gmail واختبر الإرسال لتفعيل استرجاع كلمة المرور.',
+        text: 'تم حفظ بيانات المدرسة. كلمة مرور تطبيق Gmail محفوظة ومشفرة لهذا البريد تحديداً.',
         type: 'success',
       });
     } catch (error) {
@@ -262,7 +295,7 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
         <div className="cards">
           <article className="card">
             <h3>بيانات المدرسة والتواصل</h3>
-            <p>يظهر اسم المدرسة ورقم واتسابها في الرسائل المرسلة إلى أولياء الأمور.</p>
+            <p>يظهر اسم المدرسة ونوعها وعنوانها ورقم هاتفها في أسفل وصل القبض، ويُستخدم رقم واتساب للرسائل إلى أولياء الأمور.</p>
             <p>تُفتح المحادثة من حساب واتساب المسجل على هذا الجهاز.</p>
 
             <form className="modal-form" onSubmit={handleSaveSchoolSettings} style={{ marginTop: '20px' }}>
@@ -273,6 +306,36 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
                     value={schoolForm.schoolName}
                     onChange={(event) => setSchoolForm((form) => ({ ...form, schoolName: event.target.value }))}
                     required
+                  />
+                </label>
+                <label>
+                  نوع المدرسة / المرحلة
+                  <input
+                    value={schoolForm.schoolType}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, schoolType: event.target.value }))}
+                    placeholder="مثال: ابتدائية مختلطة أو متوسطة"
+                    maxLength={100}
+                  />
+                </label>
+                <label>
+                  عنوان المدرسة
+                  <input
+                    value={schoolForm.schoolAddress}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, schoolAddress: event.target.value }))}
+                    placeholder="المدينة، المنطقة، أقرب علامة دالة"
+                    maxLength={300}
+                  />
+                </label>
+                <label>
+                  رقم هاتف المدرسة الظاهر في الوصل
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    dir="ltr"
+                    value={schoolForm.schoolPhone}
+                    onChange={(event) => setSchoolForm((form) => ({ ...form, schoolPhone: event.target.value }))}
+                    placeholder="مثال: 07700000000"
+                    maxLength={50}
                   />
                 </label>
                 <label>
@@ -322,14 +385,20 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
                     type="password"
                     value={schoolForm.recoveryAppPassword}
                     onChange={(event) => setSchoolForm((form) => ({ ...form, recoveryAppPassword: event.target.value }))}
-                    placeholder={recoveryMailStatus.credentialConfigured ? 'مُعدّة مسبقاً؛ اتركها فارغة للإبقاء عليها' : 'أدخل كلمة مرور التطبيق ذات 16 حرفاً'}
+                    placeholder={recoveryMailStatus.credentialConfigured && recoveryMailStatus.credentialEmail === schoolForm.recoveryEmail.trim().toLowerCase()
+                      ? 'مُعدّة لهذا البريد؛ اتركها فارغة للإبقاء عليها'
+                      : 'أدخل كلمة مرور التطبيق ذات 16 حرفاً لهذا البريد'}
                     autoComplete="new-password"
                   />
                 </label>
               </div>
               <p style={{ color: '#94a3b8', marginTop: '12px' }}>
                 يُستخدم البريد لاسترجاع كلمة مرور المدير فقط. أنشئ كلمة مرور تطبيق من إعدادات أمان Google؛ لا تستخدم كلمة مرور Gmail العادية.
-                {recoveryMailStatus.credentialConfigured ? ' بيانات الإرسال محفوظة في خزنة Windows الآمنة.' : ' يلزم حفظ كلمة مرور التطبيق لتفعيل الإرسال.'}
+                {recoveryMailStatus.credentialConfigured
+                  ? ` كلمة مرور التطبيق محفوظة في خزنة Windows لهذا البريد: ${recoveryMailStatus.credentialEmail}.`
+                  : recoveryMailStatus.hasCredential
+                    ? ` كلمة المرور المحفوظة تخص بريداً آخر (${recoveryMailStatus.credentialEmail || 'إعداد قديم'})؛ أدخل كلمة مرور تطبيق جديدة للبريد الحالي.`
+                    : ' يلزم حفظ كلمة مرور التطبيق لهذا البريد لتفعيل الإرسال.'}
               </p>
 
               {schoolMessage.text && (

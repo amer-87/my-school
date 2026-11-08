@@ -1,5 +1,18 @@
 export const studentStatusOptions = ['نشط', 'منقول', 'موقوف', 'متخرج'];
 
+const arabicNameCollator = new Intl.Collator('ar', { sensitivity: 'base', numeric: true });
+
+export function compareArabicNames(firstName, secondName) {
+  return arabicNameCollator.compare(String(firstName || '').trim(), String(secondName || '').trim());
+}
+
+export function sortStudentsAlphabetically(students) {
+  return [...students].sort((first, second) => compareArabicNames(
+    first.fullName || first.studentName || first.student_name,
+    second.fullName || second.studentName || second.student_name,
+  ));
+}
+
 function getPhoneDigits(phone) {
   return String(phone || '')
     .replace(/[٠-٩۰-۹]/g, (digit) => {

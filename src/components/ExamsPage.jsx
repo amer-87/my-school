@@ -154,6 +154,17 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
   const handleSubmit = async (event) => {
     event.preventDefault();
     const finalData = { ...formData, name: formData.subject };
+    const duplicateExam = exams.some((exam) =>
+      String(exam.id) !== String(selectedExamId) &&
+      String(exam.divisionId) === String(finalData.divisionId) &&
+      normalize(exam.subject) === normalize(finalData.subject) &&
+      normalize(exam.course) === normalize(finalData.course)
+    );
+
+    if (duplicateExam) {
+      setErrorMessage(`تم إدخال امتحان مادة ${finalData.subject} في ${finalData.course} لهذه الشعبة مسبقاً.`);
+      return;
+    }
 
     try {
       if (mode === 'edit' && selectedExamId) {
@@ -169,7 +180,7 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
       setErrorMessage('');
     } catch (error) {
       console.error('Failed to save exam', error);
-      setErrorMessage('فشل حفظ الامتحان في قاعدة البيانات.');
+      setErrorMessage(error.message || 'فشل حفظ الامتحان في قاعدة البيانات.');
     }
   };
 

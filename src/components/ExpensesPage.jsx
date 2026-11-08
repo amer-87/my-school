@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getExpenses, createExpense } from '../services/databaseApi';
 import ExpenseModal from './ExpenseModal';
+import DatePicker from './DatePicker';
 
 function ExpensesPage({ currentUser, currentAcademicYear }) {
   const [expenses, setExpenses] = useState([]);
@@ -51,7 +52,7 @@ function ExpensesPage({ currentUser, currentAcademicYear }) {
     <div className="expenses-page">
       <div className="expenses-header-actions">
         <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-          <span style={{ marginLeft: '8px' }}>➕</span> طلب صرفية جديدة
+          <span style={{ marginLeft: '8px' }}>➕</span> تسجيل صرفية مباشرة
         </button>
       </div>
 
@@ -73,7 +74,6 @@ function ExpensesPage({ currentUser, currentAcademicYear }) {
                   <div className="exp-left">
                     <div className="exp-amount-group">
                       <span className="exp-amount">{formatCurrency(exp.amount)} د.ع</span>
-                      <span className="exp-status-badge pending">قيد انتظار موافقة المدير</span>
                     </div>
                     <span className="exp-date">{exp.expense_date}</span>
                   </div>
@@ -102,10 +102,10 @@ function ExpensesPage({ currentUser, currentAcademicYear }) {
             <span className="summary-amount">{formatCurrency(monthlyTotal)} د.ع</span>
           </div>
           <div className="month-picker-container">
-            <input
-              type="month"
+            <DatePicker
+              mode="month"
               value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
+              onChange={(event) => setSelectedMonth(event.target.value)}
               className="month-input"
             />
           </div>

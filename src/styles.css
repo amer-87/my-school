@@ -24,6 +24,161 @@ select {
   font: inherit;
 }
 
+.localized-date-picker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  color: #f8fafc;
+}
+
+.localized-date-control {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.localized-date-control input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0 10px 10px 0;
+  outline: none;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.localized-date-control input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.localized-date-control input::placeholder {
+  color: #94a3b8;
+}
+
+.localized-date-toggle {
+  display: grid;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.localized-date-toggle:hover,
+.localized-date-header button:hover,
+.localized-calendar-grid button:hover,
+.localized-month-grid button:hover {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.localized-date-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.localized-date-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1100;
+  width: 320px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(203, 213, 225, 0.25);
+  border-radius: 14px;
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  direction: rtl;
+}
+
+.localized-date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.localized-date-header strong {
+  text-align: center;
+  font-size: 15px;
+}
+
+.localized-date-header button,
+.localized-calendar-grid button,
+.localized-month-grid button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.localized-date-header button {
+  width: 36px;
+  height: 36px;
+  font-size: 24px;
+}
+
+.localized-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.localized-calendar-weekday {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.localized-calendar-grid button,
+.localized-calendar-empty {
+  display: grid;
+  min-width: 0;
+  min-height: 36px;
+  place-items: center;
+}
+
+.localized-calendar-grid button.selected,
+.localized-month-grid button.selected {
+  background: #2563eb;
+  color: #fff;
+}
+
+.localized-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.localized-month-grid button {
+  min-height: 42px;
+  padding: 6px;
+  font-size: 13px;
+}
+
+.month-input {
+  width: 100%;
+}
+
+.month-input .localized-date-control input {
+  padding: 12px;
+  border-radius: 0 10px 10px 0;
+  font-weight: 600;
+}
+
 select option {
   background-color: #1e293b;
   color: #ffffff;
@@ -1019,7 +1174,7 @@ th {
 .receipt-title {
   text-align: center;
   font-size: 36px;
-  margin: 40px 0 10px;
+  margin: 24px 0 10px;
   font-weight: 900;
 }
 
@@ -1034,7 +1189,7 @@ th {
 
 .barcode-area {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 24px;
 }
 
 .barcode-mock {
@@ -1048,7 +1203,7 @@ th {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 40px;
-  margin-bottom: 50px;
+  margin-bottom: 30px;
 }
 
 .detail-box {
@@ -1073,9 +1228,9 @@ th {
   background: #f8fafc;
   border: 2px solid #f1f5f9;
   border-radius: 20px;
-  padding: 40px;
+  padding: 24px;
   text-align: center;
-  margin-bottom: 60px;
+  margin-bottom: 32px;
 }
 
 .amount-label {
@@ -1109,7 +1264,7 @@ th {
 .signatures-area {
   display: flex;
   justify-content: space-around;
-  margin-bottom: 40px;
+  margin-bottom: 24px;
 }
 
 .sig-box {
@@ -1124,23 +1279,26 @@ th {
 }
 
 .receipt-footer {
-  margin-top: 40px;
-  padding-top: 20px;
+  margin-top: 20px;
+  padding-top: 12px;
   border-top: 1px solid #f1f5f9;
 }
 
 .footer-info-bar {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   background: #0f172a;
   color: white;
-  padding: 16px 24px;
+  padding: 12px 20px;
   border-radius: 12px;
 }
 
 .info-item {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 8px;
   font-size: 14px;
 }
@@ -1733,9 +1891,81 @@ th {
   padding: 24px !important;
 }
 
+.results-table .table-wrapper {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.results-table .results-data-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.results-data-table th,
+.results-data-table td {
+  padding: 8px 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.results-data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #1e293b;
+}
+
+.results-data-table .results-student-column {
+  width: 20%;
+  text-align: right;
+  background: #1e293b;
+  box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.9);
+}
+
+.results-student-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #f8fafc;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.results-student-id {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.results-data-table .results-subject-column {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.results-data-table .results-summary-column {
+  width: 8%;
+  text-align: center;
+}
+
+.results-data-table .results-status-column {
+  width: 14%;
+  text-align: center;
+}
+
+.results-data-table .results-send-column {
+  width: 6%;
+  text-align: center;
+}
+
 .results-table table th {
   color: #94a3b8 !important;
-  padding: 16px !important;
+  padding: 8px 4px !important;
 }
 
 .subject-scores-list {
@@ -1994,6 +2224,113 @@ th {
   color: #94a3b8;
 }
 
+.dashboard-attendance {
+  padding: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.75));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-attendance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dashboard-attendance-header h3 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 20px;
+}
+
+.dashboard-attendance-header p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.dashboard-attendance-date {
+  padding: 8px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dashboard-attendance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-attendance-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.dashboard-attendance-icon {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 15px;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.dashboard-attendance-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-attendance-label {
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.dashboard-attendance-card strong {
+  color: #f8fafc;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.dashboard-attendance-caption {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.dashboard-attendance-card.present .dashboard-attendance-icon {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.dashboard-attendance-card.absent .dashboard-attendance-icon {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.dashboard-attendance-card.leave .dashboard-attendance-icon {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.dashboard-attendance-error {
+  margin: 0;
+  color: #fca5a5;
+}
+
 .dashboard-main-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
@@ -2094,6 +2431,15 @@ th {
 }
 
 @media (max-width: 900px) {
+  .dashboard-attendance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-attendance-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .app-shell {
     flex-direction: column;
   }

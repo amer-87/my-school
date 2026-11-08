@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getFinalResults, promoteStudents } from '../services/databaseApi';
-import { getIraqiWhatsAppNumber, getSchoolWhatsAppSignature } from '../services/studentService';
+import { compareArabicNames, getIraqiWhatsAppNumber, getSchoolWhatsAppSignature } from '../services/studentService';
 
 function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
   const [results, setResults] = useState([]);
-  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   // Normalization helper for Arabic strings
   const normalize = (str) => {
@@ -86,7 +85,8 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
           average: average.toFixed(1),
           status
         };
-      });
+      })
+      .sort((first, second) => compareArabicNames(first.fullName, second.fullName));
   }, [results, selectedDivisionId, selectedCourse]);
 
   const handlePromote = async () => {
@@ -146,39 +146,6 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
     window.open(url, '_blank');
   };
 
-  const handleBulkWhatsApp = () => {
-    const selected = filteredResults.filter(r => selectedStudentIds.includes(r.id));
-    if (selected.length === 0) {
-      alert('يرجى تحديد طالب واحد على الأقل.');
-      return;
-    }
-
-    if (!window.confirm(`سيتم فتح ${selected.length} نافذة واتساب لإرسال النتائج. هل تود الاستمرار؟\n\n(ملاحظة: يرجى السماح بالنوافذ المنبثقة "Pop-ups" في متصفحك إذا لزم الأمر).`)) {
-      return;
-    }
-
-    selected.forEach((student, index) => {
-      // Small delay between opens to help browser manage multiple tabs
-      setTimeout(() => {
-        sendWhatsAppResult(student);
-      }, index * 1200);
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedStudentIds.length === filteredResults.length) {
-      setSelectedStudentIds([]);
-    } else {
-      setSelectedStudentIds(filteredResults.map(r => r.id));
-    }
-  };
-
-  const toggleSelectStudent = (id) => {
-    setSelectedStudentIds(prev =>
-      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
-    );
-  };
-
   const getScoreColor = (score, total) => {
     const percent = (score / total) * 100;
     if (percent >= 90) return '#10b981'; // الممتاز
@@ -189,7 +156,6 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
   // Extract unique subjects and their dates for columns
   const subjectsColumns = useMemo(() => {
     const subs = {};
-    const targetCourse = normalize(selectedCourse);
     filteredResults.forEach(r => {
       r.courseSubjects.forEach(s => {
         if (!subs[s.name]) {
@@ -198,7 +164,7 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
       });
     });
     return Object.entries(subs).map(([name, date]) => ({ name, date }));
-  }, [filteredResults, selectedCourse]);
+  }, [filteredResults]);
 
   if (activeSubView === 'selection') {
     return (
@@ -268,15 +234,6 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
           <span style={{ marginLeft: '8px' }}>🔄</span> ترحيل الناجحين للعام القادم
         </button>
 
-        {selectedStudentIds.length > 0 && (
-          <button
-            className="btn"
-            onClick={handleBulkWhatsApp}
-            style={{ background: '#25d366', color: 'white', fontWeight: '800', borderRadius: '12px', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 211, 102, 0.3)' }}
-          >
-            📱 إرسال النتائج للمحددين ({selectedStudentIds.length})
-          </button>
-        )}
       </div>
 
       <div className="table-card results-table">
@@ -286,52 +243,48 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
           ) : filteredResults.length === 0 ? (
             <div className="empty-state">لا توجد بيانات درجات للطلاب المختارين.</div>
           ) : (
-            <table>
+            <table className="results-data-table">
               <thead>
                 <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedStudentIds.length === filteredResults.length && filteredResults.length > 0}
-                      onChange={toggleSelectAll}
-                      style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
-                    />
-                  </th>
-                  <th style={{ textAlign: 'center' }}>إرسال</th>
-                  <th style={{ textAlign: 'center' }}>النتيجة النهائية</th>
-                  <th style={{ textAlign: 'center' }}>المجموع</th>
-                  <th style={{ textAlign: 'center' }}>المعدل %</th>
+                  <th className="results-student-column">اسم الطالب</th>
                   {subjectsColumns.map((sub, i) => (
-                    <th key={i} style={{ textAlign: 'center', minWidth: '100px' }}>
+                    <th key={i} className="results-subject-column" style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>{sub.date}</div>
                       <div>{sub.name}</div>
                     </th>
                   ))}
-                  <th style={{ textAlign: 'right' }}>اسم الطالب</th>
+                  <th className="results-summary-column" style={{ textAlign: 'center' }}>المعدل %</th>
+                  <th className="results-status-column" style={{ textAlign: 'center' }}>النتيجة النهائية</th>
+                  <th className="results-send-column" style={{ textAlign: 'center' }}>إرسال</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredResults.map((row) => (
-                  <tr key={row.id} className={selectedStudentIds.includes(row.id) ? 'selected-row' : ''}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedStudentIds.includes(row.id)}
-                        onChange={() => toggleSelectStudent(row.id)}
-                        style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
-                      />
+                  <tr key={row.id}>
+                    <td className="results-student-column">
+                      <span className="results-student-name">{row.fullName}</span>
+                      <span className="results-student-id">رقم الطالب: {row.id}</span>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        className="btn-icon"
-                        onClick={() => sendWhatsAppResult(row)}
-                        title="إرسال عبر واتساب"
-                        style={{ background: 'rgba(37, 211, 102, 0.1)', color: '#25d366', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', border: '1px solid rgba(37, 211, 102, 0.2)' }}
-                      >
-                        📱
-                      </button>
+                    {subjectsColumns.map((col, i) => {
+                      const sub = row.courseSubjects.find(s => s.name === col.name);
+                      return (
+                        <td key={i} className="results-subject-column" style={{ textAlign: 'center' }}>
+                          {sub && sub.score !== null ? (
+                            <span style={{
+                              color: getScoreColor(sub.score, sub.total),
+                              fontWeight: '700',
+                              fontSize: '16px'
+                            }}>
+                              {sub.score}
+                            </span>
+                          ) : '—'}
+                        </td>
+                      );
+                    })}
+                    <td className="results-summary-column" style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                      {row.average}%
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td className="results-status-column" style={{ textAlign: 'center' }}>
                       <span className={`status-pill ${
                         row.status === 'ناجح' ? 'active' :
                         row.status === 'مكمل' ? 'absent' :
@@ -347,29 +300,16 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
                          row.status === 'خريج' ? '🎓 خريج' : row.status}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                      {row.totalScore} / {row.maxPossible}
+                    <td className="results-send-column" style={{ textAlign: 'center' }}>
+                      <button
+                        className="btn-icon"
+                        onClick={() => sendWhatsAppResult(row)}
+                        title="إرسال عبر واتساب"
+                        style={{ background: 'rgba(37, 211, 102, 0.1)', color: '#25d366', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', border: '1px solid rgba(37, 211, 102, 0.2)' }}
+                      >
+                        📱
+                      </button>
                     </td>
-                    <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                      {row.average}%
-                    </td>
-                    {subjectsColumns.map((col, i) => {
-                      const sub = row.courseSubjects.find(s => s.name === col.name);
-                      return (
-                        <td key={i} style={{ textAlign: 'center' }}>
-                          {sub && sub.score !== null ? (
-                            <span style={{
-                              color: getScoreColor(sub.score, sub.total),
-                              fontWeight: '700',
-                              fontSize: '16px'
-                            }}>
-                              {sub.score}
-                            </span>
-                          ) : '—'}
-                        </td>
-                      );
-                    })}
-                    <td style={{ fontWeight: '600' }}>{row.fullName} ({row.id})</td>
                   </tr>
                 ))}
               </tbody>

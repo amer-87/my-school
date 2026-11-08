@@ -103,38 +103,6 @@ CREATE TABLE IF NOT EXISTS fee_payments (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tuition_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER NOT NULL,
-    fee_record_id INTEGER NOT NULL,
-    academic_year TEXT NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'عراقي',
-    opening_paid REAL NOT NULL DEFAULT 0,
-    scheduled_total REAL NOT NULL DEFAULT 0,
-    installment_count INTEGER NOT NULL DEFAULT 4,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(student_id, academic_year)
-);
-
-CREATE TABLE IF NOT EXISTS tuition_installments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    plan_id INTEGER NOT NULL,
-    installment_number INTEGER NOT NULL,
-    due_date TEXT NOT NULL,
-    amount REAL NOT NULL DEFAULT 0,
-    UNIQUE(plan_id, installment_number),
-    FOREIGN KEY (plan_id) REFERENCES tuition_plans(id)
-);
-
-CREATE TABLE IF NOT EXISTS tuition_payment_allocations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    payment_id INTEGER NOT NULL,
-    installment_id INTEGER NOT NULL,
-    amount REAL NOT NULL,
-    FOREIGN KEY (payment_id) REFERENCES fee_payments(id),
-    FOREIGN KEY (installment_id) REFERENCES tuition_installments(id)
-);
-
 CREATE TABLE IF NOT EXISTS tuition_expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -210,7 +178,10 @@ CREATE TABLE IF NOT EXISTS school_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     school_name TEXT NOT NULL DEFAULT 'مدارس المعلم والكتاب الأهلية',
     whatsapp_phone TEXT NOT NULL DEFAULT '',
-    recovery_email TEXT NOT NULL DEFAULT ''
+    recovery_email TEXT NOT NULL DEFAULT '',
+    school_type TEXT NOT NULL DEFAULT '',
+    school_address TEXT NOT NULL DEFAULT '',
+    school_phone TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS password_recovery (
@@ -359,6 +330,9 @@ async function initializeDatabase() {
     'ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE school_settings ADD COLUMN recovery_email TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE school_settings ADD COLUMN school_type TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE school_settings ADD COLUMN school_address TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE school_settings ADD COLUMN school_phone TEXT NOT NULL DEFAULT ''",
     'ALTER TABLE certificates ADD COLUMN academic_year TEXT',
     'ALTER TABLE certificates ADD COLUMN is_deleted INTEGER DEFAULT 0',
     'ALTER TABLE schedule ADD COLUMN academic_year TEXT',
@@ -377,6 +351,12 @@ async function initializeDatabase() {
   const userColumns = await all('PRAGMA table_info(users)');
   if (!userColumns.some((column) => column.name === 'is_active')) {
     throw new Error('Database migration failed: users.is_active column is missing.');
+  }
+  const schoolSettingsColumns = await all('PRAGMA table_info(school_settings)');
+  for (const column of ['school_type', 'school_address', 'school_phone']) {
+    if (!schoolSettingsColumns.some((item) => item.name === column)) {
+      throw new Error(`Database migration failed: school_settings.${column} column is missing.`);
+    }
   }
   await run("UPDATE users SET is_active = 1 WHERE is_active IS NULL OR role IN ('admin', 'super_admin')");
   await run("UPDATE users SET is_deleted = 0 WHERE is_deleted IS NULL");
@@ -452,11 +432,14 @@ async function getLogs() { return all('SELECT l.*, u.full_name as user_name FROM
 async function getAcademicYears() { return all('SELECT * FROM academic_years ORDER BY year_name DESC'); }
 
 async function getSchoolSettings() {
-  const settings = await get('SELECT school_name, whatsapp_phone, recovery_email FROM school_settings WHERE id = 1');
+  const settings = await get('SELECT school_name, whatsapp_phone, recovery_email, school_type, school_address, school_phone FROM school_settings WHERE id = 1');
   return {
     schoolName: settings?.school_name || 'مدارس المعلم والكتاب الأهلية',
     whatsappPhone: settings?.whatsapp_phone || '',
     recoveryEmail: settings?.recovery_email || '',
+    schoolType: settings?.school_type || '',
+    schoolAddress: settings?.school_address || '',
+    schoolPhone: settings?.school_phone || '',
   };
 }
 
@@ -464,6 +447,9 @@ async function saveSchoolSettings(settings, userId) {
   const schoolName = String(settings?.schoolName || '').trim();
   const whatsappPhone = String(settings?.whatsappPhone || '').replace(/\D/g, '');
   const recoveryEmail = String(settings?.recoveryEmail || '').trim().toLowerCase();
+  const schoolType = String(settings?.schoolType || '').trim();
+  const schoolAddress = String(settings?.schoolAddress || '').trim();
+  const schoolPhone = String(settings?.schoolPhone || '').trim();
 
   if (!await requireActiveAdmin(userId)) {
     return { ok: false, message: 'تعديل بيانات المدرسة متاح لمدير المدرسة فقط.' };
@@ -480,12 +466,22 @@ async function saveSchoolSettings(settings, userId) {
   if (recoveryEmail && (recoveryEmail.length > 254 || !/^[^\s@]+@gmail\.com$/i.test(recoveryEmail))) {
     return { ok: false, message: 'يرجى إدخال عنوان Gmail صحيح لاسترجاع كلمة مرور المدير.' };
   }
+  if (schoolType.length > 100 || schoolAddress.length > 300 || schoolPhone.length > 50) {
+    return { ok: false, message: 'تحقق من طول نوع المدرسة أو عنوانها أو رقم هاتفها.' };
+  }
 
   await run(
-    `INSERT INTO school_settings (id, school_name, whatsapp_phone, recovery_email)
-     VALUES (1, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET school_name = excluded.school_name, whatsapp_phone = excluded.whatsapp_phone, recovery_email = excluded.recovery_email`,
-    [schoolName, whatsappPhone, recoveryEmail],
+    `INSERT INTO school_settings
+       (id, school_name, whatsapp_phone, recovery_email, school_type, school_address, school_phone)
+     VALUES (1, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       school_name = excluded.school_name,
+       whatsapp_phone = excluded.whatsapp_phone,
+       recovery_email = excluded.recovery_email,
+       school_type = excluded.school_type,
+       school_address = excluded.school_address,
+       school_phone = excluded.school_phone`,
+    [schoolName, whatsappPhone, recoveryEmail, schoolType, schoolAddress, schoolPhone],
   );
   await logActivity(userId, 'UPDATE', 'settings', 'تحديث بيانات المدرسة');
   return { ok: true, settings: await getSchoolSettings() };
@@ -858,109 +854,6 @@ function isValidIsoDate(value) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function getQuarterlyDueDate(firstDueDate, quarter) {
-  const [year, month, day] = firstDueDate.split('-').map(Number);
-  const targetMonth = month - 1 + quarter * 3;
-  const targetYear = year + Math.floor(targetMonth / 12);
-  const normalizedMonth = targetMonth % 12;
-  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
-  const due = new Date(Date.UTC(targetYear, normalizedMonth, Math.min(day, lastDay)));
-  return due.toISOString().slice(0, 10);
-}
-
-async function generateTuitionInstallments(firstDueDate, academicYear, userId) {
-  if (!isValidIsoDate(firstDueDate)) {
-    return { ok: false, message: 'يرجى اختيار تاريخ استحقاق صحيح.' };
-  }
-  if (!academicYear) {
-    return { ok: false, message: 'العام الدراسي مطلوب لإنشاء الأقساط.' };
-  }
-
-  const accounts = await all(`
-    SELECT s.id AS student_id, s.grade_id,
-           fr.id AS fee_record_id, fr.total_fee,
-           g.annual_fee, g.currency
-    FROM students s
-    LEFT JOIN fee_records fr ON fr.id = (
-      SELECT id FROM fee_records
-      WHERE student_id = s.id AND COALESCE(is_deleted, 0) = 0
-        AND (academic_year = ? OR academic_year IS NULL)
-      ORDER BY CASE WHEN academic_year = ? THEN 0 ELSE 1 END, id DESC
-      LIMIT 1
-    )
-    LEFT JOIN grades g ON g.id = s.grade_id
-    WHERE COALESCE(s.is_deleted, 0) = 0
-      AND (s.academic_year = ? OR s.academic_year IS NULL)
-    ORDER BY s.id
-  `, [academicYear, academicYear, academicYear]);
-
-  let created = 0;
-  let skipped = 0;
-  await executescript('BEGIN TRANSACTION');
-  try {
-    for (const account of accounts) {
-      const existingPlan = await get(
-        'SELECT id FROM tuition_plans WHERE student_id = ? AND academic_year = ?',
-        [account.student_id, academicYear],
-      );
-      if (existingPlan) {
-        skipped++;
-        continue;
-      }
-
-      let feeRecordId = account.fee_record_id;
-      let totalFee = Number(account.total_fee || 0);
-      if (!feeRecordId) {
-        totalFee = Number(account.annual_fee || 0);
-        const insertedRecord = await run(
-          'INSERT INTO fee_records (student_id, total_fee, academic_year, is_deleted) VALUES (?, ?, ?, 0)',
-          [account.student_id, totalFee, academicYear],
-        );
-        feeRecordId = insertedRecord.id;
-      }
-
-      const payments = await get(
-        `SELECT COALESCE(SUM(amount), 0) AS total
-         FROM fee_payments
-         WHERE fee_record_id = ? AND COALESCE(is_deleted, 0) = 0
-           AND (academic_year = ? OR academic_year IS NULL)`,
-        [feeRecordId, academicYear],
-      );
-      const openingPaid = roundMoney(Number(payments?.total || 0));
-      const scheduledTotal = roundMoney(Math.max(0, totalFee - openingPaid));
-      const plan = await run(
-        `INSERT INTO tuition_plans
-          (student_id, fee_record_id, academic_year, currency, opening_paid, scheduled_total, installment_count)
-         VALUES (?, ?, ?, ?, ?, ?, 4)`,
-        [account.student_id, feeRecordId, academicYear, account.currency || 'عراقي', openingPaid, scheduledTotal],
-      );
-
-      if (scheduledTotal > 0) {
-        const totalCents = Math.round(scheduledTotal * 100);
-        const baseCents = Math.floor(totalCents / 4);
-        let allocatedCents = 0;
-        for (let quarter = 0; quarter < 4; quarter++) {
-          const amountCents = quarter === 3 ? totalCents - allocatedCents : baseCents;
-          allocatedCents += amountCents;
-          await run(
-            `INSERT INTO tuition_installments (plan_id, installment_number, due_date, amount)
-             VALUES (?, ?, ?, ?)`,
-            [plan.id, quarter + 1, getQuarterlyDueDate(firstDueDate, quarter), amountCents / 100],
-          );
-        }
-      }
-      created++;
-    }
-
-    await logActivity(userId, 'INSERT', 'fees', `إنشاء جداول الأقساط الربعية للعام ${academicYear}: ${created} طالب`);
-    await executescript('COMMIT');
-    return { ok: true, created, skipped };
-  } catch (error) {
-    await executescript('ROLLBACK');
-    throw error;
-  }
-}
-
 async function createFeePayment(studentId, payload, userId, academicYear) {
   const amount = roundMoney(Number(payload.amount));
   const paymentDate = payload.date || new Date().toISOString().slice(0, 10);
@@ -991,27 +884,13 @@ async function createFeePayment(studentId, payload, userId, academicYear) {
     feeRecord = { id: res.id, total_fee: totalFee };
   }
 
-  const plan = await get(
-    'SELECT id, scheduled_total FROM tuition_plans WHERE student_id = ? AND fee_record_id = ? AND academic_year = ?',
-    [studentId, feeRecord.id, academicYear],
+  const paymentTotals = await get(
+    `SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments
+     WHERE fee_record_id = ? AND COALESCE(is_deleted, 0) = 0
+       AND (academic_year = ? OR academic_year IS NULL)`,
+    [feeRecord.id, academicYear],
   );
-  const installments = plan ? await all(`
-    SELECT i.id, i.amount,
-           COALESCE(SUM(a.amount), 0) AS paid
-    FROM tuition_installments i
-    LEFT JOIN tuition_payment_allocations a ON a.installment_id = i.id
-    WHERE i.plan_id = ?
-    GROUP BY i.id
-    ORDER BY i.due_date, i.installment_number
-  `, [plan.id]) : [];
-  const outstanding = plan
-    ? roundMoney(installments.reduce((sum, installment) => sum + Number(installment.amount) - Number(installment.paid), 0))
-    : roundMoney(Math.max(0, Number(feeRecord.total_fee || 0) - Number((await get(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments
-       WHERE fee_record_id = ? AND COALESCE(is_deleted, 0) = 0
-         AND (academic_year = ? OR academic_year IS NULL)`,
-      [feeRecord.id, academicYear],
-    ))?.total || 0)));
+  const outstanding = roundMoney(Math.max(0, Number(feeRecord.total_fee || 0) - Number(paymentTotals?.total || 0)));
   if (amount > outstanding) {
     return { ok: false, message: `المبلغ يتجاوز الرصيد المتبقي (${outstanding}).` };
   }
@@ -1024,22 +903,6 @@ async function createFeePayment(studentId, payload, userId, academicYear) {
        VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
       [feeRecord.id, amount, paymentDate, payload.method || 'نقدي', payload.note || '', academicYear, userId],
     );
-
-    if (plan) {
-      let amountLeft = Math.round(amount * 100);
-      for (const installment of installments) {
-        if (amountLeft <= 0) break;
-        const dueCents = Math.max(0, Math.round((Number(installment.amount) - Number(installment.paid)) * 100));
-        const allocationCents = Math.min(amountLeft, dueCents);
-        if (allocationCents > 0) {
-          await run(
-            'INSERT INTO tuition_payment_allocations (payment_id, installment_id, amount) VALUES (?, ?, ?)',
-            [paymentRow.id, installment.id, allocationCents / 100],
-          );
-          amountLeft -= allocationCents;
-        }
-      }
-    }
 
     await logActivity(userId, 'INSERT', 'fees', `تسجيل دفعة مالية بقيمة ${amount} للطالب رقم ${studentId}`);
     await executescript('COMMIT');
@@ -1118,8 +981,7 @@ async function getFees(academicYear = null) {
 
   const recordIds = feeRecords.map((record) => record.id);
   const placeholders = recordIds.map(() => '?').join(',');
-  const [payments, plans, installmentRows] = await Promise.all([
-    all(
+  const payments = await all(
       `SELECT fp.*, u.full_name AS received_by
        FROM fee_payments fp
        LEFT JOIN users u ON u.id = fp.created_by
@@ -1127,64 +989,19 @@ async function getFees(academicYear = null) {
          ${academicYear ? 'AND (academic_year = ? OR academic_year IS NULL)' : ''}
        ORDER BY fp.payment_date DESC, fp.id DESC`,
       academicYear ? [...recordIds, academicYear] : recordIds,
-    ),
-    all(
-      `SELECT * FROM tuition_plans
-       WHERE fee_record_id IN (${placeholders})${academicYear ? ' AND academic_year = ?' : ''}`,
-      academicYear ? [...recordIds, academicYear] : recordIds,
-    ),
-    all(
-      `SELECT i.*, p.student_id,
-              p.id AS plan_id,
-              COALESCE(SUM(a.amount), 0) AS paid_amount
-       FROM tuition_installments i
-       JOIN tuition_plans p ON p.id = i.plan_id
-       LEFT JOIN tuition_payment_allocations a ON a.installment_id = i.id
-       WHERE p.fee_record_id IN (${placeholders})${academicYear ? ' AND p.academic_year = ?' : ''}
-       GROUP BY i.id
-       ORDER BY i.due_date, i.installment_number`,
-      academicYear ? [...recordIds, academicYear] : recordIds,
-    ),
-  ]);
+    );
   const paymentsByRecord = new Map();
   for (const payment of payments) {
     const recordPayments = paymentsByRecord.get(payment.fee_record_id) || [];
     recordPayments.push(mapPaymentRow(payment));
     paymentsByRecord.set(payment.fee_record_id, recordPayments);
   }
-  const plansByRecord = new Map(plans.map((plan) => [plan.fee_record_id, plan]));
-  const installmentsByPlan = new Map();
-  for (const installment of installmentRows) {
-    const planInstallments = installmentsByPlan.get(installment.plan_id) || [];
-    const amount = Number(installment.amount || 0);
-    const paid = Number(installment.paid_amount || 0);
-    planInstallments.push({
-      id: installment.id,
-      number: installment.installment_number,
-      dueDate: installment.due_date,
-      amount,
-      paid,
-      remaining: roundMoney(Math.max(0, amount - paid)),
-      status: paid >= amount ? 'مسدد' : (installment.due_date < new Date().toISOString().slice(0, 10) ? 'متأخر' : 'مستحق'),
-    });
-    installmentsByPlan.set(installment.plan_id, planInstallments);
-  }
-
   return feeRecords.map((feeRecord) => {
     const recordPayments = paymentsByRecord.get(feeRecord.id) || [];
-    const plan = plansByRecord.get(feeRecord.id);
-    const installments = plan ? installmentsByPlan.get(plan.id) || [] : [];
     const totalPaid = roundMoney(recordPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
-    const scheduledPaid = roundMoney(installments.reduce((sum, installment) => sum + installment.paid, 0));
-    const total = plan
-      ? roundMoney(Number(plan.opening_paid) + Number(plan.scheduled_total))
-      : Number(feeRecord.total_fee || 0);
-    const paid = plan
-      ? roundMoney(Number(plan.opening_paid) + scheduledPaid)
-      : totalPaid;
-    const remaining = plan
-      ? roundMoney(installments.reduce((sum, installment) => sum + installment.remaining, 0))
-      : roundMoney(Math.max(0, total - paid));
+    const total = Number(feeRecord.total_fee || 0);
+    const paid = totalPaid;
+    const remaining = roundMoney(Math.max(0, total - paid));
 
     return {
       id: feeRecord.id,
@@ -1197,9 +1014,7 @@ async function getFees(academicYear = null) {
       paid,
       remaining,
       status: remaining === 0 ? 'مكتمل' : 'متبقي',
-      currency: plan?.currency || feeRecord.currency || 'عراقي',
-      installments,
-      planCreated: Boolean(plan),
+      currency: feeRecord.currency || 'عراقي',
       payments: recordPayments,
     };
   });
@@ -1351,9 +1166,9 @@ async function promoteStudents(studentIds, userId, currentYear) {
 
 async function getExpenses() { return all('SELECT * FROM expenses WHERE is_deleted = 0 ORDER BY expense_date DESC, id DESC'); }
 async function createExpense(payload, userId, academicYear) {
-  const row = await run('INSERT INTO expenses (title, category, description, amount, status, expense_date, created_by, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [payload.title, payload.category || 'مشتريات', payload.description || '', payload.amount || 0, payload.status || 'قيد الانتظار', payload.date || new Date().toISOString().slice(0, 10), userId, academicYear]);
-  const newExp = { id: row.id, ...payload, academic_year: academicYear };
-  await logActivity(userId, 'INSERT', 'expenses', `طلب صرفية جديدة: ${payload.title} بقيمة ${payload.amount}`, null, newExp);
+  const row = await run('INSERT INTO expenses (title, category, description, amount, status, expense_date, created_by, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [payload.title, payload.category || 'مشتريات', payload.description || '', payload.amount || 0, 'تم الصرف', payload.date || new Date().toISOString().slice(0, 10), userId, academicYear]);
+  const newExp = { id: row.id, ...payload, status: 'تم الصرف', academic_year: academicYear };
+  await logActivity(userId, 'INSERT', 'expenses', `تسجيل صرفية مباشرة: ${payload.title} بقيمة ${payload.amount}`, null, newExp);
   return newExp;
 }
 async function updateExpenseStatus(id, status, userId) {
@@ -1453,8 +1268,17 @@ async function getEnrichedAttendance(date) {
 }
 
 async function createExam(payload, userId, academicYear) {
+  const course = payload.course || 'الكورس الأول';
+  const duplicate = await get(
+    'SELECT id FROM exams WHERE is_deleted = 0 AND academic_year = ? AND division_id = ? AND subject = ? AND course = ? LIMIT 1',
+    [academicYear, payload.divisionId, payload.subject, course],
+  );
+  if (duplicate) {
+    throw new Error(`تم إدخال امتحان مادة ${payload.subject} في ${course} لهذه الشعبة مسبقاً.`);
+  }
+
   const row = await run('INSERT INTO exams (name, subject, grade_id, division_id, exam_date, total_score, course, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [payload.name, payload.subject, payload.gradeId, payload.divisionId, payload.examDate, payload.totalScore, payload.course || 'الكورس الأول', academicYear]);
+    [payload.name, payload.subject, payload.gradeId, payload.divisionId, payload.examDate, payload.totalScore, course, academicYear]);
   const newExam = { id: row.id, ...payload, academic_year: academicYear };
   await logActivity(userId, 'INSERT', 'exams', `إضافة امتحان جديد: ${payload.name} (${payload.subject}) - ${payload.course}`, null, newExam);
   return newExam;
@@ -1462,8 +1286,17 @@ async function createExam(payload, userId, academicYear) {
 
 async function updateExam(id, payload, userId) {
   const oldVal = await get('SELECT * FROM exams WHERE id = ?', [id]);
+  const course = payload.course || 'الكورس الأول';
+  const duplicate = oldVal ? await get(
+    'SELECT id FROM exams WHERE is_deleted = 0 AND academic_year = ? AND division_id = ? AND subject = ? AND course = ? AND id != ? LIMIT 1',
+    [oldVal.academic_year, payload.divisionId, payload.subject, course, id],
+  ) : null;
+  if (duplicate) {
+    throw new Error(`تم إدخال امتحان مادة ${payload.subject} في ${course} لهذه الشعبة مسبقاً.`);
+  }
+
   await run('UPDATE exams SET name = ?, subject = ?, grade_id = ?, division_id = ?, exam_date = ?, total_score = ?, course = ? WHERE id = ?',
-    [payload.name, payload.subject, payload.gradeId, payload.divisionId, payload.examDate, payload.totalScore, payload.course || 'الكورس الأول', id]);
+    [payload.name, payload.subject, payload.gradeId, payload.divisionId, payload.examDate, payload.totalScore, course, id]);
   await logActivity(userId, 'UPDATE', 'exams', `تعديل بيانات الامتحان: ${payload.name}`, oldVal, payload);
   return { id, ...payload };
 }
@@ -1537,7 +1370,7 @@ module.exports = {
   createStudent, updateStudent, deleteStudent, createTeacher, updateTeacher, deleteTeacher,
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   saveAttendanceRecords, listAttendanceForDate, getEnrichedAttendance, saveExamResults, getExamResults, getExamsStats, createExam, updateExam, deleteExam, createFeePayment, updateGradeFee, applyGradeFeeToAll, getFees,
-  generateTuitionInstallments, getTuitionExpenses, createTuitionExpense,
+  getTuitionExpenses, createTuitionExpense,
   getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
   getSchedule, saveFullSchedule, createBackup, restoreBackup, getLatestBackupInfo,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, updateGradeFeesBulk

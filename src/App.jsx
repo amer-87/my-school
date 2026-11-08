@@ -22,9 +22,8 @@ import SchedulePage from './components/SchedulePage';
 import ResultsPage from './components/ResultsPage';
 import ExpensesPage from './components/ExpensesPage';
 import LoginPage from './components/LoginPage';
-import UserManagement from './components/UserManagement';
 import { createDivisionId, createGradeId, initialDivisions, initialGrades } from './services/classService';
-import { buildStudentPayload, createInitialStudentForm, createStudentId, getIraqiLocalPhone, getNamePartsCount, initialStudentForm, initialStudents, isDuplicateStudent } from './services/studentService';
+import { buildStudentPayload, createInitialStudentForm, createStudentId, getIraqiLocalPhone, getNamePartsCount, initialStudentForm, initialStudents, isDuplicateStudent, sortStudentsAlphabetically } from './services/studentService';
 import { buildTeacherPayload, createTeacherId, initialTeacherForm, initialTeachers, isDuplicateTeacher } from './services/teacherService';
 import {
   initializeDatabase,
@@ -60,14 +59,13 @@ const modules = [
   { key: 'expenses', title: 'الصرفيات', description: 'سجل المشتريات ومصاريف التشغيل للمدرسة' },
   { key: 'fees', title: 'الرسوم والاقساط', description: 'إدارة الرسوم ومتابعة المدفوعات' },
   { key: 'settings', title: 'الإعدادات والنسخ', description: 'إدارة النسخ الاحتياطي واستعادة البيانات' },
-  { key: 'account', title: 'حسابي', description: 'تغيير كلمة المرور الخاصة بحسابك' },
 ];
 
 function App() {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState(null);
   const [loginMessage, setLoginMessage] = useState('');
-  const [students, setStudents] = useState(initialStudents);
+  const [students, setStudents] = useState(() => sortStudentsAlphabetically(initialStudents));
   const [teachers, setTeachers] = useState(initialTeachers);
   const [grades, setGrades] = useState(initialGrades);
   const [divisions, setDivisions] = useState(initialDivisions);
@@ -90,6 +88,9 @@ function App() {
   const [schoolSettings, setSchoolSettings] = useState({
     schoolName: 'مدارس المعلم والكتاب الأهلية',
     whatsappPhone: '',
+    schoolType: '',
+    schoolAddress: '',
+    schoolPhone: '',
   });
   const [teacherDetailsModalOpen, setTeacherDetailsModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
@@ -246,7 +247,7 @@ function App() {
     try {
       const data = await getAppData(currentAcademicYear);
       if (data) {
-        if (Array.isArray(data.students)) setStudents(data.students);
+        if (Array.isArray(data.students)) setStudents(sortStudentsAlphabetically(data.students));
         if (Array.isArray(data.teachers)) setTeachers(data.teachers);
         if (Array.isArray(data.grades)) setGrades(data.grades);
         if (Array.isArray(data.divisions)) setDivisions(data.divisions);
@@ -479,12 +480,12 @@ function App() {
       if (mode === 'edit' && selectedStudentId) {
         const payload = buildStudentPayload(formData, selectedStudentId, students.find((student) => student.id === selectedStudentId)?.status || 'نشط');
         const saved = await updateStudent(selectedStudentId, payload, currentUser.id);
-        setStudents((current) => current.map((student) => (student.id === selectedStudentId ? saved : student)));
+        setStudents((current) => sortStudentsAlphabetically(current.map((student) => (student.id === selectedStudentId ? saved : student))));
         setToastMessage('تم تعديل بيانات الطالب بنجاح.');
       } else {
         const payload = buildStudentPayload(formData, createStudentId(students));
         const saved = await createStudent(payload, currentUser.id, currentAcademicYear);
-        setStudents((current) => [saved, ...current]);
+        setStudents((current) => sortStudentsAlphabetically([...current, saved]));
         setToastMessage('تم إضافة الطالب بنجاح.');
       }
 
@@ -674,7 +675,7 @@ function App() {
 
       await updateStudent(studentId, updatedPayload, currentUser.id);
 
-      setStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...newPlacement } : s));
+      setStudents(prev => sortStudentsAlphabetically(prev.map(s => s.id === studentId ? { ...s, ...newPlacement } : s)));
       setToastMessage(`تم نقل الطالب ${student.fullName} بنجاح.`);
       setIsTransferModalOpen(false);
       setStudentToTransfer(null);
@@ -696,8 +697,8 @@ function App() {
   const visibleModules = useMemo(() => {
     if (currentUser?.role === 'admin') return modules;
     const allowedModules = currentUser?.role === 'accounting_employee'
-      ? ['fees', 'account']
-      : ['students', 'teachers', 'attendance', 'exams', 'results', 'account'];
+      ? ['fees', 'expenses']
+      : ['students', 'teachers', 'attendance', 'exams', 'results'];
     return modules.filter((module) => allowedModules.includes(module.key));
   }, [currentUser]);
 
@@ -961,8 +962,6 @@ function App() {
               if (Array.isArray(years)) setAcademicYears(years);
             }}
           />
-        ) : activeModule === 'account' ? (
-          <UserManagement currentUser={currentUser} isAdmin={false} onUserUpdate={setCurrentUser} />
         ) : (
           <section className="cards">
             <article className="card">

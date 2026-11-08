@@ -36,17 +36,27 @@ function getRecoveryCredentialPath() {
   return path.join(app.getPath('userData'), 'recovery-gmail.bin');
 }
 
-function readRecoveryMailPassword() {
+function readRecoveryMailPassword(expectedEmail) {
   if (process.platform !== 'win32' || !safeStorage.isEncryptionAvailable()) {
     throw new Error('خزنة Windows الآمنة غير متاحة.');
   }
   const credentialPath = getRecoveryCredentialPath();
   if (!fs.existsSync(credentialPath)) throw new Error('لم يتم إعداد بيانات إرسال Gmail.');
-  return safeStorage.decryptString(fs.readFileSync(credentialPath));
+  const decrypted = safeStorage.decryptString(fs.readFileSync(credentialPath));
+  let credential;
+  try {
+    credential = JSON.parse(decrypted);
+  } catch {
+    throw new Error('بيانات Gmail المحفوظة تخص إعداداً قديماً؛ أعد إدخال كلمة مرور تطبيق Gmail للحساب الحالي.');
+  }
+  if (String(credential.email || '').trim().toLowerCase() !== String(expectedEmail || '').trim().toLowerCase()) {
+    throw new Error('عنوان Gmail تغيّر؛ أدخل كلمة مرور تطبيق Gmail الجديدة لهذا العنوان واحفظها.');
+  }
+  return credential.password;
 }
 
 async function sendRecoveryEmail(to, code) {
-  const password = readRecoveryMailPassword();
+  const password = readRecoveryMailPassword(to);
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: to, pass: password },
@@ -63,7 +73,7 @@ async function sendRecoveryEmail(to, code) {
 }
 
 async function sendRecoveryTestEmail(to) {
-  const password = readRecoveryMailPassword();
+  const password = readRecoveryMailPassword(to);
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: to, pass: password },
@@ -108,12 +118,29 @@ async function getRecoveryMailStatus(userId) {
     return { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
   }
   const settings = await databaseService.getSchoolSettings();
+  let credentialEmail = '';
+  let hasCredential = false;
+  if (process.platform === 'win32' && safeStorage.isEncryptionAvailable()) {
+    const credentialPath = getRecoveryCredentialPath();
+    hasCredential = fs.existsSync(credentialPath);
+    if (hasCredential) {
+      try {
+        const credential = JSON.parse(safeStorage.decryptString(fs.readFileSync(credentialPath)));
+        credentialEmail = String(credential.email || '').trim().toLowerCase();
+      } catch {
+        credentialEmail = '';
+      }
+    }
+  }
   return {
     ok: true,
     recoveryEmail: settings.recoveryEmail,
-    credentialConfigured: process.platform === 'win32'
-      && safeStorage.isEncryptionAvailable()
-      && fs.existsSync(getRecoveryCredentialPath()),
+    credentialEmail,
+    hasCredential,
+    credentialConfigured: Boolean(
+      credentialEmail
+      && credentialEmail === String(settings.recoveryEmail || '').trim().toLowerCase(),
+    ),
   };
 }
 
@@ -179,7 +206,6 @@ ipcMain.handle('db:getEnrichedAttendance', (_, date) => databaseService.getEnric
 ipcMain.handle('db:saveAttendanceRecords', (_, date, rows, userId, academicYear) => databaseService.saveAttendanceRecords(date, rows, userId, academicYear));
 ipcMain.handle('db:createFeePayment', (_, studentId, payload, userId, academicYear) => databaseService.createFeePayment(studentId, payload, userId, academicYear));
 ipcMain.handle('db:getFees', (_, academicYear) => databaseService.getFees(academicYear));
-ipcMain.handle('db:generateTuitionInstallments', (_, firstDueDate, academicYear, userId) => databaseService.generateTuitionInstallments(firstDueDate, academicYear, userId));
 ipcMain.handle('db:getTuitionExpenses', (_, academicYear) => databaseService.getTuitionExpenses(academicYear));
 ipcMain.handle('db:createTuitionExpense', (_, payload, userId, academicYear) => databaseService.createTuitionExpense(payload, userId, academicYear));
 ipcMain.handle('db:createCertificate', (_, payload) => databaseService.createCertificate(payload));
@@ -189,7 +215,7 @@ ipcMain.handle('db:saveFullSchedule', (_, divisionId, cells, userId, academicYea
 ipcMain.handle('db:getFinalResults', (_, academicYear) => databaseService.getFinalResults(academicYear));
 ipcMain.handle('db:promoteStudents', (_, studentIds, userId, currentYear) => databaseService.promoteStudents(studentIds, userId, currentYear));
 ipcMain.handle('db:getExpenses', () => databaseService.getExpenses());
-ipcMain.handle('db:createExpense', (_, payload) => databaseService.createExpense(payload));
+ipcMain.handle('db:createExpense', (_, payload, userId, academicYear) => databaseService.createExpense(payload, userId, academicYear));
 ipcMain.handle('db:updateExpenseStatus', (_, id, status) => databaseService.updateExpenseStatus(id, status));
 ipcMain.handle('db:login', async (event, username, password) => {
   authenticatedUsers.delete(event.sender.id);
@@ -258,8 +284,9 @@ ipcMain.handle('db:saveSchoolSettings', async (event, settings) => {
     ? databaseService.saveSchoolSettings(settings, userId)
     : { ok: false, message: 'تعديل بيانات المدرسة متاح لمدير المدرسة فقط.' };
 });
-ipcMain.handle('security:saveRecoveryMailPassword', async (event, password) => {
-  if (!await getAuthenticatedAdminId(event)) {
+ipcMain.handle('security:saveRecoveryMailPassword', async (event, email, password) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) {
     return { ok: false, message: 'إعداد بريد الاسترجاع متاح لمدير المدرسة فقط.' };
   }
   if (process.platform !== 'win32' || !safeStorage.isEncryptionAvailable()) {
@@ -269,7 +296,15 @@ ipcMain.handle('security:saveRecoveryMailPassword', async (event, password) => {
   if (!/^[a-zA-Z0-9]{16}$/.test(normalizedPassword)) {
     return { ok: false, message: 'أدخل كلمة مرور تطبيق Gmail المكونة من 16 حرفاً أو رقماً.' };
   }
-  const encryptedPassword = safeStorage.encryptString(normalizedPassword);
+  const settings = await databaseService.getSchoolSettings();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail || normalizedEmail !== String(settings.recoveryEmail || '').trim().toLowerCase()) {
+    return { ok: false, message: 'احفظ بريد المدرسة أولاً، وتأكد أن كلمة مرور التطبيق تخص عنوان Gmail نفسه.' };
+  }
+  const encryptedPassword = safeStorage.encryptString(JSON.stringify({
+    email: normalizedEmail,
+    password: normalizedPassword,
+  }));
   fs.writeFileSync(getRecoveryCredentialPath(), encryptedPassword);
   return { ok: true };
 });
@@ -283,7 +318,12 @@ ipcMain.handle('security:testRecoveryMail', async (event) => {
   const status = await getRecoveryMailStatus(userId);
   if (!status.ok) return status;
   if (!status.recoveryEmail || !status.credentialConfigured) {
-    return { ok: false, message: 'أدخل بريد Gmail وكلمة مرور التطبيق واحفظهما أولاً.' };
+    return {
+      ok: false,
+      message: status.hasCredential
+        ? `بيانات الإرسال المحفوظة تخص ${status.credentialEmail || 'حساباً سابقاً'}، بينما البريد الحالي هو ${status.recoveryEmail}. أدخل كلمة مرور تطبيق لهذا الحساب واحفظ البيانات أولاً.`
+        : 'أدخل بريد Gmail وكلمة مرور التطبيق لهذا الحساب واحفظهما أولاً.',
+    };
   }
   try {
     await sendRecoveryTestEmail(status.recoveryEmail);

@@ -2,9 +2,10 @@
 import { useMemo, useState, useEffect } from 'react';
 import { attendanceStatuses, buildAttendanceRecords } from '../services/attendanceService';
 import { saveAttendanceRecords, getAttendanceForDate, getEnrichedAttendance } from '../services/databaseApi';
+import DatePicker from './DatePicker';
 
 function AttendancePage({ students, grades, divisions, currentUser, currentAcademicYear, onSuccess }) {
-  const [viewMode, setViewMode] = useState('absentees'); // 'dashboard', 'record', 'absentees', 'leaves'
+  const [viewMode, setViewMode] = useState('record'); // 'dashboard', 'record', 'absentees', 'leaves'
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     const offset = d.getTimezoneOffset();
@@ -15,6 +16,7 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
   const [selectedDivisionId, setSelectedDivisionId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [attendanceSaveStates, setAttendanceSaveStates] = useState({});
   const [dailyStats, setDailyStats] = useState({ present: 0, absent: 0, late: 0, leave: 0, total: 0 });
   const [enrichedData, setEnrichedData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -59,37 +61,63 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
     setSelectedDivisionId('');
   };
 
-  const handleLoadStudentsForRecording = async () => {
+  useEffect(() => {
+    setAttendanceRecords([]);
+    setAttendanceSaveStates({});
+    if (viewMode !== 'record' || !selectedGradeId || !selectedDivisionId) return undefined;
+
+    let isCurrentRequest = true;
     setLoading(true);
-    try {
-      const existing = await getAttendanceForDate(selectedDate);
-      const nextRecords = buildAttendanceRecords(students, selectedGradeId, selectedDivisionId).map((record) => {
-        const previous = existing.find((item) => item.studentId === record.studentId);
-        return previous ? { ...record, status: previous.status } : record;
+    getAttendanceForDate(selectedDate)
+      .then((existing) => {
+        if (!isCurrentRequest) return;
+        const nextRecords = buildAttendanceRecords(students, selectedGradeId, selectedDivisionId).map((record) => {
+          const previous = existing.find((item) => item.studentId === record.studentId);
+          return previous
+            ? { ...record, status: previous.status, isSaved: true }
+            : { ...record, isSaved: false };
+        });
+        setAttendanceRecords(nextRecords);
+      })
+      .catch((error) => {
+        if (isCurrentRequest) {
+          console.error('Failed to load students for attendance recording', error);
+          onSuccess?.('تعذر تحميل الطلاب. تحقق من الاتصال بقاعدة البيانات وحاول مجددًا.');
+        }
+      })
+      .finally(() => {
+        if (isCurrentRequest) setLoading(false);
       });
-      setAttendanceRecords(nextRecords);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const updateStatus = (studentId, status) => {
-    setAttendanceRecords((current) => current.map((record) => (record.studentId === studentId ? { ...record, status } : record)));
-  };
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [currentAcademicYear, selectedDate, selectedDivisionId, selectedGradeId, students, viewMode]);
 
-  const handleSave = async () => {
-    if (attendanceRecords.length === 0) return;
+  const updateStatus = async (studentId, status) => {
+    const record = attendanceRecords.find((item) => item.studentId === studentId);
+    if (!record || (record.status === status && record.isSaved) || attendanceSaveStates[studentId] === 'saving') return;
+
+    setAttendanceRecords((current) => current.map((item) => (
+      item.studentId === studentId ? { ...item, status, isSaved: true } : item
+    )));
+    setAttendanceSaveStates((current) => ({ ...current, [studentId]: 'saving' }));
     try {
-      await saveAttendanceRecords(selectedDate, attendanceRecords, currentUser.id, currentAcademicYear);
-      const msg = `تم حفظ الحضور لـ ${attendanceRecords.length} طالب بتاريخ ${selectedDate}.`;
-      setViewMode('absentees');
-      if (onSuccess) onSuccess(msg);
-      loadDailyData();
+      await saveAttendanceRecords(
+        selectedDate,
+        [{ studentId, status, note: record.note || '' }],
+        currentUser.id,
+        currentAcademicYear,
+      );
+      setAttendanceSaveStates((current) => ({ ...current, [studentId]: 'saved' }));
     } catch (error) {
-      console.error(error);
-      alert('فشل حفظ الحضور');
+      console.error(`Failed to save attendance for student ${studentId}`, error);
+      setAttendanceRecords((current) => current.map((item) => (
+        item.studentId === studentId
+          ? { ...item, status: record.status, isSaved: record.isSaved }
+          : item
+      )));
+      setAttendanceSaveStates((current) => ({ ...current, [studentId]: 'error' }));
     }
   };
 
@@ -111,7 +139,7 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
   const renderListToolbar = () => (
     <div className="module-toolbar">
       <div className="module-actions">
-        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ width: 'auto' }} />
+        <DatePicker value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={{ width: 'auto' }} />
 
         <div className="tabs-container">
           <button
@@ -149,7 +177,7 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
             <span>‹</span> عودة لكشف الغياب
           </button>
           <div className="module-actions">
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ width: 'auto' }} />
+            <DatePicker value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={{ width: 'auto' }} />
           </div>
         </div>
 
@@ -182,20 +210,19 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
     return (
       <section className="students-module">
         <div className="module-toolbar">
-          <button className="back-link" onClick={() => setViewMode('absentees')}>
+          <button className="back-link" onClick={() => setViewMode('absentees')} disabled={Object.values(attendanceSaveStates).includes('saving')}>
             <span>‹</span> إلغاء والعودة
           </button>
           <div className="module-actions">
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ width: 'auto' }} />
-            <select value={selectedGradeId} onChange={handleGradeChange} style={{ width: 'auto' }}>
+            <DatePicker value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={{ width: 'auto' }} disabled={Object.values(attendanceSaveStates).includes('saving')} />
+            <select value={selectedGradeId} onChange={handleGradeChange} style={{ width: 'auto' }} disabled={Object.values(attendanceSaveStates).includes('saving')}>
               <option value="">اختر الصف</option>
               {grades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
-            <select value={selectedDivisionId} onChange={(e) => setSelectedDivisionId(e.target.value)} style={{ width: 'auto' }}>
+            <select value={selectedDivisionId} onChange={(e) => setSelectedDivisionId(e.target.value)} style={{ width: 'auto' }} disabled={Object.values(attendanceSaveStates).includes('saving')}>
               <option value="">اختر الشعبة</option>
               {availableDivisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
-            <button className="btn btn-primary" onClick={handleLoadStudentsForRecording} disabled={!selectedDivisionId}>عرض الطلاب</button>
           </div>
         </div>
 
@@ -217,21 +244,29 @@ function AttendancePage({ students, grades, divisions, currentUser, currentAcade
                       <td>
                         <div className="status-switch-group">
                           {attendanceStatuses.map(s => (
-                            <button key={s} className={r.status === s ? 'status-pill active' : 'status-pill'} onClick={() => updateStatus(r.studentId, s)}>{s}</button>
+                            <button
+                              key={s}
+                              type="button"
+                              className={r.status === s ? 'status-pill active' : 'status-pill'}
+                              onClick={() => updateStatus(r.studentId, s)}
+                              disabled={attendanceSaveStates[r.studentId] === 'saving'}
+                            >
+                              {s}
+                            </button>
                           ))}
+                          <span role={attendanceSaveStates[r.studentId] === 'error' ? 'alert' : 'status'} style={{ minWidth: '75px', fontSize: '12px', color: attendanceSaveStates[r.studentId] === 'error' ? '#f87171' : '#94a3b8' }}>
+                            {attendanceSaveStates[r.studentId] === 'saving' ? 'جاري الحفظ...' : attendanceSaveStates[r.studentId] === 'saved' ? 'تم الحفظ' : attendanceSaveStates[r.studentId] === 'error' ? 'تعذر الحفظ' : ''}
+                          </span>
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {attendanceRecords.length === 0 && !loading && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>يرجى اختيار الصف والشعبة ثم الضغط على عرض الطلاب.</td></tr>}
+                  {attendanceRecords.length === 0 && !loading && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>يرجى اختيار الصف والشعبة لعرض الطلاب تلقائيًا.</td></tr>}
                   {loading && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>جاري التحميل...</td></tr>}
                 </tbody>
               </table>
            </div>
         </section>
-        <div className="module-toolbar footer-toolbar" style={{ marginTop: '20px' }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={attendanceRecords.length === 0}>حفظ الحضور والعودة</button>
-        </div>
       </section>
     );
   }

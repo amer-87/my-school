@@ -1,5 +1,6 @@
 import ModalLayout from './ModalLayout';
 import { studentStatusOptions } from '../services/studentService';
+import DatePicker from './DatePicker';
 
 function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorMessage, grades, divisions }) {
   const availableDivisions = divisions.filter((division) => division.gradeId === Number(formData.gradeId));
@@ -23,7 +24,7 @@ function StudentModal({ isOpen, mode, formData, onChange, onClose, onSubmit, err
           </label>
           <label>
             تاريخ الميلاد
-            <input type="date" name="dob" value={formData.dob} onChange={onChange} required />
+            <DatePicker name="dob" value={formData.dob} onChange={onChange} required />
           </label>
           <label>
             الصف

@@ -1,4 +1,5 @@
 import { examSubjects } from '../services/examService';
+import DatePicker from './DatePicker';
 
 function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorMessage, grades, divisions, isLocked }) {
   if (!isOpen) return null;
@@ -63,7 +64,7 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
             </label>
             <label>
               تاريخ الامتحان
-              <input type="date" name="examDate" value={formData.examDate} onChange={onChange} required />
+              <DatePicker name="examDate" value={formData.examDate} onChange={onChange} required />
             </label>
             <label>
               الدرجة النهائية (مثلاً 100)

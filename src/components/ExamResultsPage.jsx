@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { saveExamResults, getExamResults } from '../services/databaseApi';
+import { sortStudentsAlphabetically } from '../services/studentService';
 
 // Individual Row component for better performance and stability
 const ResultRow = React.memo(({ row, index, totalScore, onUpdate }) => {
@@ -34,7 +35,7 @@ const ResultRow = React.memo(({ row, index, totalScore, onUpdate }) => {
             value={val}
             onChange={handleChange}
             onFocus={(e) => e.target.select()}
-            placeholder="0"
+            placeholder="—"
             style={{
               width: '180px',
               textAlign: 'center',
@@ -96,10 +97,10 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
     try {
       const existingScores = await getExamResults(selectedExam.id);
 
-      const filteredStudents = students.filter(s =>
+      const filteredStudents = sortStudentsAlphabetically(students.filter(s =>
         String(s.gradeId) === String(selectedExam.gradeId) &&
         String(s.divisionId) === String(selectedExam.divisionId)
-      );
+      ));
 
       const nextRows = filteredStudents.map((student) => {
         const existing = existingScores.find(es => String(es.student_id) === String(student.id));

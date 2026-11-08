@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ModalLayout from './ModalLayout';
+import DatePicker from './DatePicker';
 
 function ExpenseModal({ isOpen, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
@@ -31,7 +32,7 @@ function ExpenseModal({ isOpen, onClose, onSubmit }) {
   };
 
   return (
-    <ModalLayout title="طلب صرفية جديدة" isOpen={isOpen} onClose={onClose}>
+    <ModalLayout title="تسجيل صرفية مباشرة" isOpen={isOpen} onClose={onClose}>
       <form className="modal-form" onSubmit={handleFormSubmit}>
         <div className="form-grid">
           <label>
@@ -54,7 +55,7 @@ function ExpenseModal({ isOpen, onClose, onSubmit }) {
           </label>
           <label>
             التاريخ
-            <input type="date" name="date" value={formData.date} onChange={handleChange} required />
+            <DatePicker name="date" value={formData.date} onChange={handleChange} required />
           </label>
           <label style={{ gridColumn: '1 / -1' }}>
             الوصف / الملاحظات
@@ -75,7 +76,7 @@ function ExpenseModal({ isOpen, onClose, onSubmit }) {
           </label>
         </div>
         <div className="modal-actions">
-          <button type="submit" className="btn btn-primary">إرسال الطلب</button>
+          <button type="submit" className="btn btn-primary">تسجيل الصرف</button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>إلغاء</button>
         </div>
       </form>

@@ -89,38 +89,6 @@ CREATE TABLE IF NOT EXISTS fee_payments (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tuition_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER NOT NULL,
-    fee_record_id INTEGER NOT NULL,
-    academic_year TEXT NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'عراقي',
-    opening_paid REAL NOT NULL DEFAULT 0,
-    scheduled_total REAL NOT NULL DEFAULT 0,
-    installment_count INTEGER NOT NULL DEFAULT 4,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(student_id, academic_year)
-);
-
-CREATE TABLE IF NOT EXISTS tuition_installments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    plan_id INTEGER NOT NULL,
-    installment_number INTEGER NOT NULL,
-    due_date TEXT NOT NULL,
-    amount REAL NOT NULL DEFAULT 0,
-    UNIQUE(plan_id, installment_number),
-    FOREIGN KEY (plan_id) REFERENCES tuition_plans(id)
-);
-
-CREATE TABLE IF NOT EXISTS tuition_payment_allocations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    payment_id INTEGER NOT NULL,
-    installment_id INTEGER NOT NULL,
-    amount REAL NOT NULL,
-    FOREIGN KEY (payment_id) REFERENCES fee_payments(id),
-    FOREIGN KEY (installment_id) REFERENCES tuition_installments(id)
-);
-
 CREATE TABLE IF NOT EXISTS tuition_expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -196,7 +164,10 @@ CREATE TABLE IF NOT EXISTS school_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     school_name TEXT NOT NULL DEFAULT 'مدارس المعلم والكتاب الأهلية',
     whatsapp_phone TEXT NOT NULL DEFAULT '',
-    recovery_email TEXT NOT NULL DEFAULT ''
+    recovery_email TEXT NOT NULL DEFAULT '',
+    school_type TEXT NOT NULL DEFAULT '',
+    school_address TEXT NOT NULL DEFAULT '',
+    school_phone TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS password_recovery (
