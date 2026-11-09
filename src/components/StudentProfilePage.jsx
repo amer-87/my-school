@@ -1,8 +1,12 @@
 import React, { useMemo } from 'react';
-import { getLogs } from '../services/databaseApi';
+import { getFinalResults, getLogs } from '../services/databaseApi';
+import { calculateYearEndSubjects, getGradeRule, normalizeResultText } from '../services/resultCalculation';
 
-function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onEdit, canViewFinancials = true }) {
+function StudentProfilePage({ student, feeRecord, attendanceRecords, grades = [], currentAcademicYear, onBack, onEdit, canViewFinancials = true }) {
   const [logs, setLogs] = React.useState([]);
+  const [gradeResults, setGradeResults] = React.useState(null);
+  const [gradesLoading, setGradesLoading] = React.useState(true);
+  const [gradesError, setGradesError] = React.useState('');
 
   React.useEffect(() => {
     const loadLogs = async () => {
@@ -22,7 +26,73 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
     loadLogs();
   }, [student]);
 
-  if (!student) return null;
+  React.useEffect(() => {
+    let active = true;
+    const loadGradeResults = async () => {
+      if (!student || !currentAcademicYear) return;
+      setGradesLoading(true);
+      setGradesError('');
+      setGradeResults(null);
+      try {
+        const allResults = await getFinalResults(currentAcademicYear);
+        if (active) {
+          setGradeResults(allResults.find((result) => String(result.id) === String(student.id)) || null);
+        }
+      } catch (error) {
+        console.error('Failed to load student grade details', error);
+        if (active) setGradesError('تعذر تحميل درجات الطالب.');
+      } finally {
+        if (active) setGradesLoading(false);
+      }
+    };
+    loadGradeResults();
+    return () => { active = false; };
+  }, [student, currentAcademicYear]);
+
+  const studentGrade = student
+    ? grades.find((grade) => String(grade.id) === String(student.gradeId))
+    : null;
+  const resultRule = getGradeRule(studentGrade);
+  const yearEndSubjects = gradeResults
+    ? calculateYearEndSubjects(gradeResults, studentGrade)
+    : [];
+  const subjectRows = useMemo(() => {
+    if (!gradeResults) return [];
+    const bySubject = new Map();
+    gradeResults.subjects.forEach((subject) => {
+      const key = normalizeResultText(subject.name);
+      if (!bySubject.has(key)) bySubject.set(key, { key, name: subject.name, exams: [] });
+      bySubject.get(key).exams.push(subject);
+    });
+    const secondRoundBySubject = new Map(
+      (gradeResults.secondRoundResults || []).map((result) => [normalizeResultText(result.subjectName), result]),
+    );
+    return [...bySubject.values()].map((subject) => ({
+      ...subject,
+      secondRound: secondRoundBySubject.get(subject.key) || null,
+      yearEnd: yearEndSubjects.find((result) => result.key === subject.key) || null,
+    }));
+  }, [gradeResults, yearEndSubjects]);
+  const gradeCourses = useMemo(() => {
+    const courses = new Map();
+    subjectRows.forEach((subject) => subject.exams.forEach((exam) => {
+      const key = normalizeResultText(exam.course);
+      const hasRecordedScore = exam.score !== null && exam.score !== undefined;
+      const hasSecondRoundFinal = key === normalizeResultText('النهائي') && subject.secondRound;
+      if (key !== normalizeResultText('الدور الثاني')
+        && (hasRecordedScore || hasSecondRoundFinal)
+        && !courses.has(key)) {
+        courses.set(key, exam.course);
+      }
+    }));
+    return [...courses.entries()]
+      .sort((first, second) => {
+        const order = ['الشهر الأول', 'الشهر الثاني', 'الشهر الثالث', 'الشهر الرابع', 'الشهر الخامس', 'نصف السنة', 'النهائي'];
+        const firstIndex = order.findIndex((course) => normalizeResultText(course) === first[0]);
+        const secondIndex = order.findIndex((course) => normalizeResultText(course) === second[0]);
+        return (firstIndex === -1 ? order.length : firstIndex) - (secondIndex === -1 ? order.length : secondIndex);
+      });
+  }, [subjectRows]);
 
   const formatCurrency = (amount, currency = 'عراقي') => {
     const formatted = new Intl.NumberFormat('en-US').format(amount);
@@ -32,7 +102,7 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
   // Calculate attendance stats
   const attendanceStats = useMemo(() => {
     const stats = { present: 0, absent: 0, late: 0 };
-    attendanceRecords.forEach(rec => {
+    (attendanceRecords || []).forEach(rec => {
       if (rec.status === 'حاضر') stats.present++;
       else if (rec.status === 'غائب') stats.absent++;
       else if (rec.status === 'متأخر') stats.late++;
@@ -43,6 +113,8 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
   const progress = feeRecord && feeRecord.total > 0
     ? (feeRecord.paid / feeRecord.total) * 100
     : 0;
+
+  if (!student) return null;
 
   return (
     <div className="student-profile-container">
@@ -134,19 +206,6 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
               </div>
             </div>
 
-            {/* Results Section */}
-            <div className="profile-section card half">
-              <div className="section-header" style={{ marginBottom: '15px' }}>
-                <span className="header-icon">🎓</span>
-                <h3 style={{ display: 'inline', marginRight: '8px' }}>النتائج</h3>
-              </div>
-              <div className="results-summary">
-                <div className="average-circle">
-                  <span className="avg-num" style={{ color: '#0071e3' }}>—</span>
-                  <span className="avg-label">المعدل العام</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -187,6 +246,78 @@ function StudentProfilePage({ student, feeRecord, attendanceRecords, onBack, onE
           </div>
         </div>
       </div>
+
+      <section className="profile-section card student-grade-history">
+        <div className="section-header" style={{ marginBottom: '16px' }}>
+          <span className="header-icon">🎓</span>
+          <h3 style={{ display: 'inline', marginRight: '8px' }}>درجات المواد - {currentAcademicYear}</h3>
+        </div>
+        {gradesLoading ? (
+          <div className="empty-state">جاري تحميل درجات الطالب...</div>
+        ) : gradesError ? (
+          <div className="empty-state">{gradesError}</div>
+        ) : subjectRows.length === 0 ? (
+          <div className="empty-state">لا توجد درجات مسجلة لهذا الطالب في العام الدراسي المحدد.</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="results-data-table">
+              <thead>
+                <tr>
+                  <th>المادة</th>
+                  {gradeCourses.map(([key, course]) => <th key={key} style={{ textAlign: 'center' }}>{course}</th>)}
+                  <th style={{ textAlign: 'center' }}>الدور الثاني</th>
+                  <th style={{ textAlign: 'center' }}>محصلة المادة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subjectRows.map((subject) => (
+                  <tr key={subject.key}>
+                    <td>{subject.name}</td>
+                    {gradeCourses.map(([key]) => {
+                      const exam = subject.exams.find((item) => normalizeResultText(item.course) === key);
+                      const isFinal = key === normalizeResultText('النهائي');
+                      const displayedScore = isFinal && subject.secondRound
+                        ? subject.secondRound.score
+                        : exam?.score;
+                      return (
+                        <td key={key} style={{ textAlign: 'center' }}>
+                          {displayedScore === null || displayedScore === undefined
+                            ? '—'
+                            : (
+                              <span>
+                                {displayedScore} / {exam?.total || subject.secondRound?.total || 100}
+                                {isFinal && subject.secondRound && (
+                                  <small style={{ display: 'block', color: '#94a3b8' }}>
+                                    دور ثانٍ (درجة الأول: {exam?.score ?? '—'})
+                                  </small>
+                                )}
+                              </span>
+                            )}
+                        </td>
+                      );
+                    })}
+                    <td style={{ textAlign: 'center' }}>
+                      {subject.secondRound
+                        ? `${subject.secondRound.score} / ${subject.secondRound.total}`
+                        : '—'}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {subject.yearEnd?.calculatedScore === null || !subject.yearEnd?.complete
+                        ? 'غير مكتملة'
+                        : `${subject.yearEnd.calculatedScore.toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {resultRule === null && subjectRows.length > 0 && (
+          <p style={{ color: '#94a3b8', marginBottom: 0 }}>
+            لا توجد قاعدة محصلة سنوية معرفة لهذا الصف؛ تعرض درجات الامتحانات المسجلة فقط.
+          </p>
+        )}
+      </section>
     </div>
   );
 }

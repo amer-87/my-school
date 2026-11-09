@@ -86,6 +86,18 @@ CREATE TABLE IF NOT EXISTS exam_results (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS second_round_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    subject_name TEXT NOT NULL,
+    score REAL NOT NULL,
+    total_score REAL NOT NULL DEFAULT 100,
+    academic_year TEXT NOT NULL,
+    modified_by INTEGER,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_id, subject_name, academic_year)
+);
+
 CREATE TABLE IF NOT EXISTS fee_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL,
@@ -375,7 +387,7 @@ async function initializeDatabase() {
   return { ok: true, path: DB_PATH };
 }
 
-async function getAppData(academicYear = null) {
+async function getAppData(academicYear = null, includeFinancials = true) {
   const yearFilter = academicYear ? ` AND academic_year = '${academicYear}'` : '';
   const [students, teachers, grades, divisions, exams, attendance, fees, certificates] = await Promise.all([
     all(`SELECT * FROM students WHERE is_deleted = 0${yearFilter} ORDER BY id DESC`),
@@ -384,10 +396,17 @@ async function getAppData(academicYear = null) {
     all('SELECT * FROM divisions WHERE is_deleted = 0 ORDER BY id DESC'),
     all(`SELECT * FROM exams WHERE is_deleted = 0${yearFilter} ORDER BY id DESC`),
     all(`SELECT * FROM attendance_records WHERE 1=1${yearFilter} ORDER BY attendance_date DESC, id DESC`),
-    getFees(academicYear),
+    includeFinancials ? getFees(academicYear) : Promise.resolve([]),
     all(`SELECT * FROM certificates WHERE is_deleted = 0${yearFilter} ORDER BY id DESC`),
   ]);
-  return { students: students.map(mapStudentRow), teachers: teachers.map(mapTeacherRow), grades: grades.map(mapGradeRow), divisions: divisions.map(mapDivisionRow), exams: exams.map(mapExamRow), attendance: attendance.map(mapAttendanceRow), fees, certificates };
+  const mappedGrades = grades.map(mapGradeRow);
+  if (!includeFinancials) {
+    mappedGrades.forEach((grade) => {
+      delete grade.annual_fee;
+      delete grade.currency;
+    });
+  }
+  return { students: students.map(mapStudentRow), teachers: teachers.map(mapTeacherRow), grades: mappedGrades, divisions: divisions.map(mapDivisionRow), exams: exams.map(mapExamRow), attendance: attendance.map(mapAttendanceRow), fees, certificates };
 }
 
 async function login(username, password) {
@@ -488,6 +507,9 @@ async function saveSchoolSettings(settings, userId) {
 }
 
 async function addAcademicYear(yearName, userId) {
+  if (!await requireActiveAdmin(userId)) {
+    return { ok: false, message: 'إدارة السنوات الدراسية متاحة لمدير المدرسة فقط.' };
+  }
   const existing = await get('SELECT id FROM academic_years WHERE year_name = ?', [yearName]);
   if (existing) return { ok: false, message: 'هذا العام الدراسي مسجل مسبقاً' };
 
@@ -497,6 +519,9 @@ async function addAcademicYear(yearName, userId) {
 }
 
 async function setCurrentAcademicYear(yearName, userId) {
+  if (!await requireActiveAdmin(userId)) {
+    return { ok: false, message: 'تغيير السنة الدراسية متاح لمدير المدرسة فقط.' };
+  }
   await executescript('BEGIN TRANSACTION');
   try {
     await run('UPDATE academic_years SET is_current = 0');
@@ -695,7 +720,7 @@ async function deleteUser(id, userId) {
 async function updateUserPassword(id, newPassword, userId) {
   const actor = await getActor(userId);
   const user = await get('SELECT username, full_name, role, is_deleted FROM users WHERE id = ?', [id]);
-  if (!actor?.is_active || !user) return { ok: false, message: 'الحساب غير متاح.' };
+  if (!actor?.is_active || actor.is_deleted || !user) return { ok: false, message: 'الحساب غير متاح.' };
   if (user.is_deleted) return { ok: false, message: 'لا يمكن تغيير كلمة مرور حساب ملغى.' };
   if (Number(id) !== Number(userId) && !['admin', 'super_admin'].includes(actor.role)) {
     return { ok: false, message: 'يمكن للموظف تغيير كلمة مروره فقط.' };
@@ -715,7 +740,7 @@ async function updateOwnUsername(id, newUsername, currentPassword, userId) {
   const actor = await getActor(userId);
   if (!actor?.is_active || actor.is_deleted || Number(id) !== Number(userId)
     || !['admin', 'super_admin'].includes(actor.role)) {
-    return { ok: false, message: 'تغيير اسم المستخدم متاح لمدير المدرسة لحسابه فقط.' };
+    return { ok: false, message: 'تغيير اسم المستخدم متاح لحساب المستخدم نفسه فقط.' };
   }
 
   const username = String(newUsername || '').trim();
@@ -785,16 +810,28 @@ async function deleteTeacher(id, userId) {
   return true;
 }
 
-async function createGrade(payload, userId) {
-  const row = await run('INSERT INTO grades (name, level, annual_fee, currency) VALUES (?, ?, ?, ?)', [payload.name, payload.level || 'ابتدائي', payload.annualFee || 0, payload.currency || 'عراقي']);
+async function createGrade(payload, userId, canManageFinancials = true) {
+  const row = await run(
+    'INSERT INTO grades (name, level, annual_fee, currency) VALUES (?, ?, ?, ?)',
+    [payload.name, payload.level || 'ابتدائي', canManageFinancials ? payload.annualFee || 0 : 0, canManageFinancials ? payload.currency || 'عراقي' : 'عراقي'],
+  );
   const newGrade = { id: row.id, ...payload };
   await logActivity(userId, 'INSERT', 'grades', `إنشاء صف جديد: ${payload.name}`, null, newGrade);
   return newGrade;
 }
 
-async function updateGrade(id, payload, userId) {
+async function updateGrade(id, payload, userId, canManageFinancials = true) {
   const oldVal = await get('SELECT * FROM grades WHERE id = ?', [id]);
-  await run('UPDATE grades SET name = ?, level = ?, annual_fee = ?, currency = ? WHERE id = ?', [payload.name, payload.level || 'ابتدائي', payload.annualFee || 0, payload.currency || 'عراقي', id]);
+  await run(
+    'UPDATE grades SET name = ?, level = ?, annual_fee = ?, currency = ? WHERE id = ?',
+    [
+      payload.name,
+      payload.level || 'ابتدائي',
+      canManageFinancials ? payload.annualFee || 0 : oldVal?.annual_fee || 0,
+      canManageFinancials ? payload.currency || 'عراقي' : oldVal?.currency || 'عراقي',
+      id,
+    ],
+  );
   const newVal = { id, ...payload };
   await logActivity(userId, 'UPDATE', 'grades', `تعديل بيانات الصف: ${payload.name}`, oldVal, newVal);
   return newVal;
@@ -1053,7 +1090,9 @@ async function createTuitionExpense(payload, userId, academicYear) {
 }
 
 async function getFinalResults(academicYear = null) {
-  const yearFilter = academicYear ? ` AND s.academic_year = '${academicYear}'` : '';
+  const yearFilter = academicYear ? ' AND s.academic_year = ?' : '';
+  const examYearFilter = academicYear ? ' AND e.academic_year = ?' : '';
+  const resultYearFilter = academicYear ? ' AND er.academic_year = ?' : '';
   const query = `
     SELECT
       s.id as student_id, s.full_name, s.grade_id, s.division_id, s.status as student_status, s.phone as guardian_phone,
@@ -1061,12 +1100,23 @@ async function getFinalResults(academicYear = null) {
       e.subject as subject_name, e.exam_date, e.course as exam_course, er.score, e.total_score
     FROM students s
     JOIN grades g ON s.grade_id = g.id
-    LEFT JOIN exams e ON e.grade_id = s.grade_id AND e.division_id = s.division_id AND e.is_deleted = 0
-    LEFT JOIN exam_results er ON er.exam_id = e.id AND er.student_id = s.id
+    LEFT JOIN exams e ON e.grade_id = s.grade_id AND e.division_id = s.division_id
+      AND e.is_deleted = 0${examYearFilter}
+    LEFT JOIN exam_results er ON er.exam_id = e.id AND er.student_id = s.id${resultYearFilter}
     WHERE s.is_deleted = 0${yearFilter}
     ORDER BY s.id, e.course, e.subject
   `;
-  const rows = await all(query);
+  const queryParams = academicYear ? [academicYear, academicYear, academicYear] : [];
+  const [rows, secondRoundRows] = await Promise.all([
+    all(query, queryParams),
+    all(
+      `SELECT sr.student_id, sr.subject_name, sr.score, sr.total_score
+       FROM second_round_results sr
+       JOIN students s ON s.id = sr.student_id
+       WHERE s.is_deleted = 0${academicYear ? ' AND sr.academic_year = ?' : ''}`,
+      academicYear ? [academicYear] : [],
+    ),
+  ]);
   const students = {};
   rows.forEach(row => {
     if (!students[row.student_id]) {
@@ -1079,7 +1129,8 @@ async function getFinalResults(academicYear = null) {
         guardianPhone: row.guardian_phone,
         gradeName: row.grade_name,
         gradeLevel: row.grade_level,
-        subjects: []
+        subjects: [],
+        secondRoundResults: []
       };
     }
     if (row.subject_name) {
@@ -1092,76 +1143,136 @@ async function getFinalResults(academicYear = null) {
       });
     }
   });
+  secondRoundRows.forEach((row) => {
+    if (students[row.student_id]) {
+      students[row.student_id].secondRoundResults.push({
+        subjectName: row.subject_name,
+        score: Number(row.score),
+        total: Number(row.total_score),
+      });
+    }
+  });
   return Object.values(students);
 }
 
-async function promoteStudents(studentIds, userId, currentYear) {
-  await executescript('BEGIN TRANSACTION');
-  try {
-    const parts = currentYear.split('-');
-    const nextYear = `${Number(parts[0]) + 1}-${Number(parts[1]) + 1}`;
+function normalizeResultText(value) {
+  return String(value || '').trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+}
 
-    // Ensure next year exists in academic_years table
-    await run('INSERT OR IGNORE INTO academic_years (year_name, is_current) VALUES (?, ?)', [nextYear, 0]);
-
-    const allGrades = await all('SELECT * FROM grades WHERE is_deleted = 0');
-    const sortedGrades = allGrades.sort((a, b) => {
-        const gradeOrder = { 'اول': 1, 'ثاني': 2, 'ثالث': 3, 'رابع': 4, 'خامس': 5, 'سادس': 6, 'سابع': 7, 'ثامن': 8, 'تاسع': 9, 'عاشر': 10, 'حادي عشر': 11, 'ثاني عشر': 12 };
-        const getW = (n) => { let c = n.replace('الصف', '').trim(); if(c.startsWith('ال')) c = c.substring(2); c = c.replace(/[أإآ]/g, 'ا'); return gradeOrder[c] || 999; };
-        return getW(a.name) - getW(b.name);
-    });
-
-    for (const id of studentIds) {
-      const student = await get('SELECT * FROM students WHERE id = ?', [id]);
-      if (!student) continue;
-
-      const currentIdx = sortedGrades.findIndex(g => g.id === student.grade_id);
-
-      // Case 1: Student is in Grade 6 (or the last grade in the list)
-      if (currentIdx === -1 || currentIdx === sortedGrades.length - 1) {
-        // Mark as Graduate in current year record
-        await run('UPDATE students SET status = ? WHERE id = ?', ['خريج', id]);
-        await logActivity(userId, 'UPDATE', 'students', `تخرج الطالب ${student.full_name} من المدرسة (الصف السادس)`);
-      }
-      // Case 2: Student is in a lower grade (1-5)
-      else {
-        const nextGrade = sortedGrades[currentIdx + 1];
-
-        // Mark current record as 'ناجح ومرحل'
-        await run('UPDATE students SET status = ? WHERE id = ?', ['ناجح ومرحل', id]);
-
-        // Check if student already promoted to next year to avoid duplicates
-        const exists = await get('SELECT id FROM students WHERE full_name = ? AND academic_year = ?', [student.full_name, nextYear]);
-
-        if (!exists) {
-          // Find the matching division in the next grade.
-          // Search for a division with the same name in the next grade.
-          const nextDiv = await get('SELECT id FROM divisions WHERE name = ? AND grade_id = ? AND is_deleted = 0', [student.division, nextGrade.id]);
-
-          await run(`
-            INSERT INTO students (
-              full_name, gender, birth_date, grade, grade_id,
-              division, division_id, phone, address,
-              status, academic_year, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            student.full_name, student.gender, student.birth_date, nextGrade.name, nextGrade.id,
-            student.division, nextDiv ? nextDiv.id : null,
-            student.phone, student.address,
-            'نشط', nextYear, userId
-          ]);
-
-          await logActivity(userId, 'UPDATE', 'students', `ترحيل الطالب ${student.full_name} من ${student.grade} إلى ${nextGrade.name} للعام ${nextYear}`);
-        }
-      }
-    }
-    await executescript('COMMIT');
-    return { ok: true, nextYear };
-  } catch (error) {
-    await executescript('ROLLBACK');
-    console.error('Promotion failed:', error);
-    throw error;
+function getGradeResultRule(gradeName, gradeLevel) {
+  const name = normalizeResultText(gradeName)
+    .replace(/الصف/g, '')
+    .replace(/ابتدائي|المتوسط|متوسط|الثانوي|ثانوي|الاعدادي|اعدادي/g, '')
+    .trim();
+  const words = [
+    ['اول', 'الاول'], ['ثاني', 'الثاني'], ['ثالث', 'الثالث'],
+    ['رابع', 'الرابع'], ['خامس', 'الخامس'], ['سادس', 'السادس'],
+  ];
+  let number = words.findIndex((forms) => forms.some((word) => name.includes(word))) + 1;
+  if (number === 0) {
+    const digits = name.replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)));
+    number = Number(digits.match(/\d+/)?.[0]) || null;
   }
+  const level = normalizeResultText(gradeLevel);
+  if ((level.includes('ابتدائي') && number === 6)
+    || (level.includes('متوسط') && (number === 3 || number === 6))
+    || (level.includes('ثانوي') && number === 6)) return 'final-only';
+  if ((level.includes('ابتدائي') && number >= 1 && number <= 5)
+    || (level.includes('متوسط') && (number === 1 || number === 2))
+    || (level.includes('ثانوي') && (number === 4 || number === 5))) return 'annual-and-final';
+  return null;
+}
+
+async function isStudentFailedInSubject(studentId, subjectName, academicYear) {
+  const student = await get(
+    `SELECT s.status, s.grade_id, s.division_id, g.name AS grade_name, g.level AS grade_level
+     FROM students s JOIN grades g ON g.id = s.grade_id
+     WHERE s.id = ? AND s.academic_year = ? AND s.is_deleted = 0`,
+    [studentId, academicYear],
+  );
+  if (!student || student.status !== 'نشط') return false;
+  const rule = getGradeResultRule(student.grade_name, student.grade_level);
+  if (!rule) return false;
+
+  const exams = await all(
+    `SELECT e.course, e.total_score, er.score
+     FROM exams e
+     LEFT JOIN exam_results er ON er.exam_id = e.id AND er.student_id = ?
+       AND (er.academic_year = ? OR er.academic_year IS NULL)
+     WHERE e.grade_id = ? AND e.division_id = ? AND e.subject = ?
+       AND e.academic_year = ? AND e.is_deleted = 0`,
+    [studentId, academicYear, student.grade_id, student.division_id, subjectName, academicYear],
+  );
+  const finalExam = exams.find((exam) =>
+    normalizeResultText(exam.course) === normalizeResultText('النهائي')
+  );
+  if (!finalExam || finalExam.score === null || Number(finalExam.total_score) <= 0) return false;
+
+  const finalPercentage = Number(finalExam.score) / Number(finalExam.total_score) * 100;
+  if (rule === 'final-only') return finalPercentage < 50;
+
+  const annualExams = exams.filter((exam) =>
+    normalizeResultText(exam.course) !== normalizeResultText('النهائي')
+    && normalizeResultText(exam.course) !== normalizeResultText('الدور الثاني')
+    && exam.score !== null && Number(exam.total_score) > 0
+  );
+  if (annualExams.length === 0) return false;
+  const annualAverage = annualExams.reduce(
+    (sum, exam) => sum + Number(exam.score) / Number(exam.total_score) * 100,
+    0,
+  ) / annualExams.length;
+  return (annualAverage + finalPercentage) / 2 < 50;
+}
+
+async function saveSecondRoundResults(studentId, rows, userId, academicYear) {
+  const student = await get(
+    'SELECT id FROM students WHERE id = ? AND academic_year = ? AND is_deleted = 0',
+    [studentId, academicYear],
+  );
+  if (!student) throw new Error('الطالب غير موجود في العام الدراسي المحدد.');
+  if (!Array.isArray(rows)) throw new Error('بيانات درجات الدور الثاني غير صالحة.');
+
+  const validRows = rows.map((row) => {
+    const subjectName = String(row.subjectName || '').trim();
+    const score = Number(row.score);
+    const totalScore = Number(row.totalScore);
+    if (!subjectName || !Number.isFinite(score) || !Number.isFinite(totalScore)
+      || totalScore <= 0 || score < 0 || score > totalScore) {
+      throw new Error('تحقق من اسم المادة ودرجة الدور الثاني وحدها الأعلى.');
+    }
+    return { subjectName, score, totalScore };
+  });
+
+  for (const row of validRows) {
+    const finalExam = await get(
+      `SELECT e.total_score
+       FROM exams e
+       JOIN students s ON s.grade_id = e.grade_id AND s.division_id = e.division_id
+       WHERE s.id = ? AND e.subject = ? AND e.course = 'النهائي'
+         AND e.academic_year = ? AND e.is_deleted = 0`,
+      [studentId, row.subjectName, academicYear],
+    );
+    if (!finalExam || Number(finalExam.total_score) !== row.totalScore) {
+      throw new Error(`لا يوجد امتحان نهائي مسجل لمادة ${row.subjectName} في هذا الصف والسنة.`);
+    }
+    if (!await isStudentFailedInSubject(studentId, row.subjectName, academicYear)) {
+      throw new Error(`لا يمكن إدخال درجة الدور الثاني للطالب في مادة ${row.subjectName} لأنه غير راسب فيها.`);
+    }
+  }
+
+  for (const row of validRows) {
+    await run(
+      `INSERT INTO second_round_results
+        (student_id, subject_name, score, total_score, academic_year, modified_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(student_id, subject_name, academic_year)
+       DO UPDATE SET score = excluded.score, total_score = excluded.total_score,
+         modified_by = excluded.modified_by, updated_at = CURRENT_TIMESTAMP`,
+      [studentId, row.subjectName, row.score, row.totalScore, academicYear, userId],
+    );
+  }
+  await logActivity(userId, 'UPDATE', 'exam_results', `إدخال درجات الدور الثاني للطالب رقم ${studentId}`);
+  return true;
 }
 
 async function getExpenses() { return all('SELECT * FROM expenses WHERE is_deleted = 0 ORDER BY expense_date DESC, id DESC'); }
@@ -1309,6 +1420,30 @@ async function deleteExam(id, userId) {
 }
 
 async function saveExamResults(examId, rows, userId, academicYear) {
+  const exam = await get('SELECT * FROM exams WHERE id = ? AND is_deleted = 0', [examId]);
+  if (!exam) throw new Error('الامتحان غير موجود.');
+  if (exam.academic_year !== academicYear) throw new Error('الامتحان لا يتبع العام الدراسي المحدد.');
+  if (normalizeResultText(exam.course) === normalizeResultText('الدور الثاني')) {
+    await run('BEGIN TRANSACTION');
+    try {
+      for (const row of rows) {
+        if (row.studentId != null && row.score != null && row.score !== '') {
+          await saveSecondRoundResults(row.studentId, [{
+            subjectName: exam.subject,
+            score: Number(row.score),
+            totalScore: Number(exam.total_score),
+          }], userId, academicYear);
+        }
+      }
+      await run('COMMIT');
+    } catch (error) {
+      await run('ROLLBACK');
+      throw error;
+    }
+    await logActivity(userId, 'UPDATE', 'exam_results', `إدخال درجات الدور الثاني: ${exam.name} لـ ${rows.length} طالب`);
+    return true;
+  }
+
   await run('DELETE FROM exam_results WHERE exam_id = ?', [examId]);
   for (const row of rows) {
     if (row.studentId != null && row.score != null && row.score !== '') {
@@ -1318,12 +1453,23 @@ async function saveExamResults(examId, rows, userId, academicYear) {
       );
     }
   }
-  const exam = await get('SELECT name FROM exams WHERE id = ?', [examId]);
-  await logActivity(userId, 'UPDATE', 'exams', `إدخال درجات الامتحان: ${exam?.name} لـ ${rows.length} طالب`);
+  await logActivity(userId, 'UPDATE', 'exams', `إدخال درجات الامتحان: ${exam.name} لـ ${rows.length} طالب`);
   return true;
 }
 
 async function getExamResults(examId) {
+  const exam = await get('SELECT * FROM exams WHERE id = ?', [examId]);
+  if (exam && normalizeResultText(exam.course) === normalizeResultText('الدور الثاني')) {
+    return all(
+      `SELECT sr.student_id, sr.score, sr.modified_by, u.full_name AS edited_by
+       FROM second_round_results sr
+       JOIN students s ON s.id = sr.student_id
+       LEFT JOIN users u ON u.id = sr.modified_by
+       WHERE s.grade_id = ? AND s.division_id = ? AND sr.subject_name = ?
+         AND sr.academic_year = ?`,
+      [exam.grade_id, exam.division_id, exam.subject, exam.academic_year],
+    );
+  }
   return all(
     `SELECT er.student_id, er.score, er.modified_by, u.full_name AS edited_by
      FROM exam_results er
@@ -1338,10 +1484,21 @@ async function getExamsStats(academicYear = null) {
   const query = `
     SELECT
       e.id as exam_id,
-      SUM(CASE WHEN er.score >= (e.total_score / 2.0) THEN 1 ELSE 0 END) as passed_count,
-      SUM(CASE WHEN er.score < (e.total_score / 2.0) AND er.score IS NOT NULL THEN 1 ELSE 0 END) as failed_count
+      SUM(CASE WHEN
+        CASE WHEN e.course = 'الدور الثاني' THEN sr.score ELSE er.score END >= (e.total_score / 2.0)
+        THEN 1 ELSE 0 END) as passed_count,
+      SUM(CASE WHEN
+        CASE WHEN e.course = 'الدور الثاني' THEN sr.score ELSE er.score END < (e.total_score / 2.0)
+        AND CASE WHEN e.course = 'الدور الثاني' THEN sr.score ELSE er.score END IS NOT NULL
+        THEN 1 ELSE 0 END) as failed_count
     FROM exams e
     LEFT JOIN exam_results er ON e.id = er.exam_id
+    LEFT JOIN students s ON e.course = 'الدور الثاني'
+      AND s.grade_id = e.grade_id AND s.division_id = e.division_id
+      AND s.academic_year = e.academic_year
+    LEFT JOIN second_round_results sr
+      ON s.id = sr.student_id AND sr.subject_name = e.subject
+      AND sr.academic_year = e.academic_year
     WHERE e.is_deleted = 0${yearFilter}
     GROUP BY e.id
   `;
@@ -1371,7 +1528,7 @@ module.exports = {
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   saveAttendanceRecords, listAttendanceForDate, getEnrichedAttendance, saveExamResults, getExamResults, getExamsStats, createExam, updateExam, deleteExam, createFeePayment, updateGradeFee, applyGradeFeeToAll, getFees,
   getTuitionExpenses, createTuitionExpense,
-  getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
+  getFinalResults, getExpenses, createExpense, updateExpenseStatus,
   getSchedule, saveFullSchedule, createBackup, restoreBackup, getLatestBackupInfo,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, updateGradeFeesBulk
 };

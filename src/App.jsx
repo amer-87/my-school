@@ -55,7 +55,7 @@ const modules = [
   { key: 'attendance', title: 'الحضور والغياب', description: 'تسجيل الحضور والغياب وتقارير يومية' },
   { key: 'exams', title: 'الامتحانات والدرجات', description: 'إعداد الجداول وإدخال درجات المواد' },
   { key: 'schedule', title: 'الجدول الدراسي', description: 'بناء الجداول الأسبوعية ومنع تضارب المعلمين' },
-  { key: 'results', title: 'النتائج والترحيل', description: 'إدخال الدرجات النهائية وترحيل الطلاب الناجحين للعام القادم' },
+  { key: 'results', title: 'النتائج', description: 'عرض النتائج النهائية للطلاب' },
   { key: 'expenses', title: 'الصرفيات', description: 'سجل المشتريات ومصاريف التشغيل للمدرسة' },
   { key: 'fees', title: 'الرسوم والاقساط', description: 'إدارة الرسوم ومتابعة المدفوعات' },
   { key: 'settings', title: 'الإعدادات والنسخ', description: 'إدارة النسخ الاحتياطي واستعادة البيانات' },
@@ -698,7 +698,9 @@ function App() {
     if (currentUser?.role === 'admin') return modules;
     const allowedModules = currentUser?.role === 'accounting_employee'
       ? ['fees', 'expenses']
-      : ['students', 'teachers', 'attendance', 'exams', 'results'];
+      : currentUser?.role === 'administrative_employee'
+        ? modules.filter((module) => !['fees', 'expenses', 'settings'].includes(module.key)).map((module) => module.key)
+        : [];
     return modules.filter((module) => allowedModules.includes(module.key));
   }, [currentUser]);
 
@@ -706,9 +708,10 @@ function App() {
     setCurrentUser(user);
     setLoginMessage('');
     if (user.role === 'accounting_employee') setActiveModule('fees');
-    else if (user.role === 'administrative_employee') setActiveModule('students');
+    else if (user.role === 'administrative_employee') setActiveModule('dashboard');
     else setActiveModule('dashboard');
     setViewingStudentId(null);
+    refreshAppData();
   };
 
   if (!currentUser) {
@@ -719,7 +722,7 @@ function App() {
     <div className="app-shell" style={{ direction: 'rtl' }}>
       <aside className="sidebar">
         <h1>إدارة المدارس</h1>
-        <p>{currentUser.full_name} ({currentUser.role === 'admin' ? 'مدير' : 'موظف'})</p>
+        <p>{currentUser.full_name} ({currentUser.role === 'admin' ? 'مدير' : currentUser.role === 'administrative_employee' ? 'موظف إداري' : 'موظف'})</p>
         <nav style={{ flex: 1 }}>
           {visibleModules.map((module) => (
             <button
@@ -764,9 +767,11 @@ function App() {
 
         {viewingStudentId ? (
           <StudentProfilePage
-            student={students.find(s => s.id === viewingStudentId)}
+            student={students.find(s => String(s.id) === String(viewingStudentId))}
             feeRecord={fees.find(f => f.studentId === viewingStudentId)}
             attendanceRecords={attendance.filter(a => a.studentId === viewingStudentId)}
+            grades={grades}
+            currentAcademicYear={currentAcademicYear}
             onBack={() => setViewingStudentId(null)}
             canViewFinancials={['admin', 'accounting_employee'].includes(currentUser.role)}
             onEdit={(student) => {
@@ -781,6 +786,7 @@ function App() {
             fees={fees}
             onViewStudent={handleView}
             currentAcademicYear={currentAcademicYear}
+            canViewFinancials={['admin', 'accounting_employee'].includes(currentUser.role)}
           />
         ) : activeModule === 'students' ? (
           <section className="students-module">
@@ -925,11 +931,10 @@ function App() {
             grades={grades}
             divisions={divisions}
             schoolSettings={schoolSettings}
-            currentUser={currentUser}
             currentAcademicYear={currentAcademicYear}
             viewState={resultsViewState}
             setViewState={setResultsViewState}
-            onRefresh={refreshAppData}
+            onViewStudent={handleView}
           />
         ) : activeModule === 'expenses' ? (
           <ExpensesPage currentUser={currentUser} currentAcademicYear={currentAcademicYear} />
@@ -947,7 +952,7 @@ function App() {
             viewState={feesViewState}
             setViewState={setFeesViewState}
           />
-        ) : activeModule === 'settings' ? (
+        ) : activeModule === 'settings' && currentUser.role === 'admin' ? (
           <SettingsPage
             currentUser={currentUser}
             academicYears={academicYears}

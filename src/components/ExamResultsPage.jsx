@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { saveExamResults, getExamResults } from '../services/databaseApi';
+import { saveExamResults, getExamResults, getFinalResults } from '../services/databaseApi';
 import { sortStudentsAlphabetically } from '../services/studentService';
+import { calculateYearEndSubjects, normalizeResultText } from '../services/resultCalculation';
 
 // Individual Row component for better performance and stability
 const ResultRow = React.memo(({ row, index, totalScore, onUpdate }) => {
@@ -76,7 +77,7 @@ const ResultRow = React.memo(({ row, index, totalScore, onUpdate }) => {
   );
 });
 
-function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, currentUser, currentAcademicYear }) {
+function ExamResultsPage({ students, grades, exams, initialExamId, onBack, onSuccess, currentUser, currentAcademicYear }) {
   const [selectedExamId, setSelectedExamId] = useState(initialExamId || '');
   const [rows, setRows] = useState([]);
   const [message, setMessage] = useState('');
@@ -89,17 +90,38 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
     exams.find((exam) => String(exam.id) === String(selectedExamId)) || null,
     [exams, selectedExamId]
   );
+  const isSecondRound = normalizeResultText(selectedExam?.course) === normalizeResultText('الدور الثاني');
+  const selectedGrade = grades.find((grade) => String(grade.id) === String(selectedExam?.gradeId));
 
   const loadExistingResults = async () => {
     if (!selectedExam) return;
 
     setIsLoading(true);
     try {
-      const existingScores = await getExamResults(selectedExam.id);
+      const [existingScores, finalResults] = await Promise.all([
+        getExamResults(selectedExam.id),
+        isSecondRound ? getFinalResults(currentAcademicYear) : Promise.resolve([]),
+      ]);
+
+      let eligibleStudentIds = null;
+      if (isSecondRound) {
+        eligibleStudentIds = new Set(finalResults
+          .filter((result) =>
+            String(result.gradeId) === String(selectedExam.gradeId)
+            && String(result.divisionId) === String(selectedExam.divisionId)
+            && result.studentStatus === 'نشط'
+          )
+          .filter((result) => calculateYearEndSubjects(result, selectedGrade).some((subject) =>
+            normalizeResultText(subject.name) === normalizeResultText(selectedExam.subject)
+            && subject.failedInFirstRound
+          ))
+          .map((result) => String(result.id)));
+      }
 
       const filteredStudents = sortStudentsAlphabetically(students.filter(s =>
         String(s.gradeId) === String(selectedExam.gradeId) &&
-        String(s.divisionId) === String(selectedExam.divisionId)
+        String(s.divisionId) === String(selectedExam.divisionId) &&
+        (!eligibleStudentIds || eligibleStudentIds.has(String(s.id)))
       ));
 
       const nextRows = filteredStudents.map((student) => {
@@ -113,7 +135,7 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
       });
 
       setRows(nextRows);
-      lastLoadedExamId.current = selectedExam.id;
+      lastLoadedExamId.current = `${selectedExam.id}:${currentAcademicYear}`;
     } catch (error) {
       console.error('Failed to load existing results', error);
       setMessage('فشل في تحميل النتائج السابقة.');
@@ -123,10 +145,11 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
   };
 
   useEffect(() => {
-    if (selectedExam && selectedExam.id !== lastLoadedExamId.current) {
+    const loadKey = selectedExam ? `${selectedExam.id}:${currentAcademicYear}` : null;
+    if (selectedExam && loadKey !== lastLoadedExamId.current) {
       loadExistingResults();
     }
-  }, [selectedExam?.id]);
+  }, [selectedExam?.id, currentAcademicYear]);
 
   // Use useCallback to prevent unnecessary re-renders of ResultRow
   const updateScore = useCallback((studentId, value) => {
@@ -214,7 +237,11 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
         </div>
       ) : rows.length === 0 ? (
         <div className="empty-state-card" style={{ marginTop: '20px' }}>
-          <p>لا يوجد طلاب مسجلين في هذا الصف والشعبة حالياً.</p>
+          <p>
+            {isSecondRound
+              ? 'لا يوجد طلاب راسبون في هذه المادة لإدخال درجات الدور الثاني.'
+              : 'لا يوجد طلاب مسجلين في هذا الصف والشعبة حالياً.'}
+          </p>
         </div>
       ) : (
         <section className="table-card" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -222,7 +249,11 @@ function ExamResultsPage({ students, exams, initialExamId, onBack, onSuccess, cu
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
               <div>
                 <h3 style={{ color: '#fff' }}>إدخال نتائج: {selectedExam.name}</h3>
-                <p style={{ color: '#94a3b8' }}>المادة: <strong>{selectedExam.subject}</strong> | الدرجة النهائية: <strong>{selectedExam.totalScore}</strong></p>
+                  <p style={{ color: '#94a3b8' }}>
+                    المادة: <strong>{selectedExam.subject}</strong>
+                    {isSecondRound ? ' | درجات الدور الثاني للطلاب الراسبين في المادة فقط' : ''}
+                    {' | الدرجة النهائية: '}<strong>{selectedExam.totalScore}</strong>
+                  </p>
               </div>
               <button
                 type="button"

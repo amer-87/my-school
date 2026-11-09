@@ -16,7 +16,7 @@ try {
 const isDev = !app.isPackaged;
 const authenticatedUsers = new Map();
 
-async function getAuthenticatedUserId(event) {
+async function getAuthenticatedUser(event) {
   const userId = authenticatedUsers.get(event.sender.id);
   if (!userId) return null;
   const session = await databaseService.validateUserSession(userId);
@@ -24,7 +24,12 @@ async function getAuthenticatedUserId(event) {
     authenticatedUsers.delete(event.sender.id);
     return null;
   }
-  return session.user.id;
+  return session.user;
+}
+
+async function getAuthenticatedUserId(event) {
+  const user = await getAuthenticatedUser(event);
+  return user?.id || null;
 }
 
 async function getAuthenticatedAdminId(event) {
@@ -32,6 +37,18 @@ async function getAuthenticatedAdminId(event) {
   return userId && await databaseService.isActiveAdmin(userId) ? userId : null;
 }
 
+async function getAuthenticatedFinanceId(event) {
+  const user = await getAuthenticatedUser(event);
+  return user && ['admin', 'super_admin', 'accounting_employee'].includes(user.role)
+    ? user.id
+    : null;
+}
+
+async function requireFinanceAccess(event) {
+  const userId = await getAuthenticatedFinanceId(event);
+  if (!userId) throw new Error('هذا القسم متاح لمدير المدرسة وموظف الحسابات فقط.');
+  return userId;
+}
 function getRecoveryCredentialPath() {
   return path.join(app.getPath('userData'), 'recovery-gmail.bin');
 }
@@ -182,15 +199,27 @@ process.on('uncaughtException', (error) => {
 
 // IPC Handlers
 ipcMain.handle('db:initializeDatabase', () => databaseService.initializeDatabase());
-ipcMain.handle('db:getAppData', (_, academicYear) => databaseService.getAppData(academicYear));
+ipcMain.handle('db:getAppData', async (event, academicYear) => {
+  const user = await getAuthenticatedUser(event);
+  const includeFinancials = Boolean(user && ['admin', 'super_admin', 'accounting_employee'].includes(user.role));
+  return databaseService.getAppData(academicYear, includeFinancials);
+});
 ipcMain.handle('db:createStudent', (_, payload, userId, academicYear) => databaseService.createStudent(payload, userId, academicYear));
 ipcMain.handle('db:updateStudent', (_, id, payload, userId) => databaseService.updateStudent(id, payload, userId));
 ipcMain.handle('db:deleteStudent', (_, id, userId) => databaseService.deleteStudent(id, userId));
 ipcMain.handle('db:createTeacher', (_, payload, userId) => databaseService.createTeacher(payload, userId));
 ipcMain.handle('db:updateTeacher', (_, id, payload, userId) => databaseService.updateTeacher(id, payload, userId));
 ipcMain.handle('db:deleteTeacher', (_, id, userId) => databaseService.deleteTeacher(id, userId));
-ipcMain.handle('db:createGrade', (_, payload, userId) => databaseService.createGrade(payload, userId));
-ipcMain.handle('db:updateGrade', (_, id, payload, userId) => databaseService.updateGrade(id, payload, userId));
+ipcMain.handle('db:createGrade', async (event, payload, userId) => {
+  const actor = await getAuthenticatedUser(event);
+  const canManageFinancials = Boolean(actor && ['admin', 'super_admin', 'accounting_employee'].includes(actor.role));
+  return databaseService.createGrade(payload, actor?.id || userId, canManageFinancials);
+});
+ipcMain.handle('db:updateGrade', async (event, id, payload, userId) => {
+  const actor = await getAuthenticatedUser(event);
+  const canManageFinancials = Boolean(actor && ['admin', 'super_admin', 'accounting_employee'].includes(actor.role));
+  return databaseService.updateGrade(id, payload, actor?.id || userId, canManageFinancials);
+});
 ipcMain.handle('db:deleteGrade', (_, id, userId) => databaseService.deleteGrade(id, userId));
 ipcMain.handle('db:createDivision', (_, payload, userId) => databaseService.createDivision(payload, userId));
 ipcMain.handle('db:updateDivision', (_, id, payload, userId) => databaseService.updateDivision(id, payload, userId));
@@ -204,19 +233,39 @@ ipcMain.handle('db:getExamsStats', (_, academicYear) => databaseService.getExams
 ipcMain.handle('db:getAttendanceForDate', (_, date) => databaseService.listAttendanceForDate(date));
 ipcMain.handle('db:getEnrichedAttendance', (_, date) => databaseService.getEnrichedAttendance(date));
 ipcMain.handle('db:saveAttendanceRecords', (_, date, rows, userId, academicYear) => databaseService.saveAttendanceRecords(date, rows, userId, academicYear));
-ipcMain.handle('db:createFeePayment', (_, studentId, payload, userId, academicYear) => databaseService.createFeePayment(studentId, payload, userId, academicYear));
-ipcMain.handle('db:getFees', (_, academicYear) => databaseService.getFees(academicYear));
-ipcMain.handle('db:getTuitionExpenses', (_, academicYear) => databaseService.getTuitionExpenses(academicYear));
-ipcMain.handle('db:createTuitionExpense', (_, payload, userId, academicYear) => databaseService.createTuitionExpense(payload, userId, academicYear));
+ipcMain.handle('db:createFeePayment', async (event, studentId, payload, _userId, academicYear) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.createFeePayment(studentId, payload, userId, academicYear);
+});
+ipcMain.handle('db:getFees', async (event, academicYear) => {
+  await requireFinanceAccess(event);
+  return databaseService.getFees(academicYear);
+});
+ipcMain.handle('db:getTuitionExpenses', async (event, academicYear) => {
+  await requireFinanceAccess(event);
+  return databaseService.getTuitionExpenses(academicYear);
+});
+ipcMain.handle('db:createTuitionExpense', async (event, payload, _userId, academicYear) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.createTuitionExpense(payload, userId, academicYear);
+});
 ipcMain.handle('db:createCertificate', (_, payload) => databaseService.createCertificate(payload));
 ipcMain.handle('db:getSchedule', () => databaseService.getSchedule());
 ipcMain.handle('db:saveScheduleCell', (_, payload) => databaseService.saveScheduleCell(payload));
 ipcMain.handle('db:saveFullSchedule', (_, divisionId, cells, userId, academicYear) => databaseService.saveFullSchedule(divisionId, cells, userId, academicYear));
 ipcMain.handle('db:getFinalResults', (_, academicYear) => databaseService.getFinalResults(academicYear));
-ipcMain.handle('db:promoteStudents', (_, studentIds, userId, currentYear) => databaseService.promoteStudents(studentIds, userId, currentYear));
-ipcMain.handle('db:getExpenses', () => databaseService.getExpenses());
-ipcMain.handle('db:createExpense', (_, payload, userId, academicYear) => databaseService.createExpense(payload, userId, academicYear));
-ipcMain.handle('db:updateExpenseStatus', (_, id, status) => databaseService.updateExpenseStatus(id, status));
+ipcMain.handle('db:getExpenses', async (event) => {
+  await requireFinanceAccess(event);
+  return databaseService.getExpenses();
+});
+ipcMain.handle('db:createExpense', async (event, payload, _userId, academicYear) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.createExpense(payload, userId, academicYear);
+});
+ipcMain.handle('db:updateExpenseStatus', async (event, id, status) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.updateExpenseStatus(id, status, userId);
+});
 ipcMain.handle('db:login', async (event, username, password) => {
   authenticatedUsers.delete(event.sender.id);
   const result = await databaseService.login(username, password);
@@ -237,13 +286,13 @@ ipcMain.handle('db:getUsers', async (event) => {
   return databaseService.getUsers(userId);
 });
 ipcMain.handle('db:createUser', async (event, payload) => {
-  const userId = await getAuthenticatedUserId(event);
+  const userId = await getAuthenticatedAdminId(event);
   return userId
     ? databaseService.createUser(payload, userId)
     : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
 });
 ipcMain.handle('db:deleteUser', async (event, id) => {
-  const userId = await getAuthenticatedUserId(event);
+  const userId = await getAuthenticatedAdminId(event);
   return userId
     ? databaseService.deleteUser(id, userId)
     : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
@@ -261,18 +310,33 @@ ipcMain.handle('db:updateOwnUsername', async (event, id, newUsername, currentPas
     : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
 });
 ipcMain.handle('db:setUserActive', async (event, id, isActive) => {
-  const userId = await getAuthenticatedUserId(event);
+  const userId = await getAuthenticatedAdminId(event);
   return userId
     ? databaseService.setUserActive(id, isActive, userId)
     : { ok: false, message: 'يرجى تسجيل الدخول مجدداً.' };
 });
-ipcMain.handle('db:updateGradeFee', (_, gradeId, amount, currency, userId) => databaseService.updateGradeFee(gradeId, amount, currency, userId));
-ipcMain.handle('db:applyGradeFeeToAll', (_, gradeId, amount, userId) => databaseService.applyGradeFeeToAll(gradeId, amount, userId));
-ipcMain.handle('db:updateGradeFeesBulk', (_, edits, userId) => databaseService.updateGradeFeesBulk(edits, userId));
+ipcMain.handle('db:updateGradeFee', async (event, gradeId, amount, currency) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.updateGradeFee(gradeId, amount, currency, userId);
+});
+ipcMain.handle('db:applyGradeFeeToAll', async (event, gradeId, amount) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.applyGradeFeeToAll(gradeId, amount, userId);
+});
+ipcMain.handle('db:updateGradeFeesBulk', async (event, edits) => {
+  const userId = await requireFinanceAccess(event);
+  return databaseService.updateGradeFeesBulk(edits, userId);
+});
 ipcMain.handle('db:getLogs', () => databaseService.getLogs());
 ipcMain.handle('db:getAcademicYears', () => databaseService.getAcademicYears());
-ipcMain.handle('db:addAcademicYear', (_, yearName, userId) => databaseService.addAcademicYear(yearName, userId));
-ipcMain.handle('db:setCurrentAcademicYear', (_, yearName, userId) => databaseService.setCurrentAcademicYear(yearName, userId));
+ipcMain.handle('db:addAcademicYear', async (event, yearName) => {
+  const userId = await getAuthenticatedAdminId(event);
+  return userId ? databaseService.addAcademicYear(yearName, userId) : { ok: false, message: 'إدارة السنوات الدراسية متاحة لمدير المدرسة فقط.' };
+});
+ipcMain.handle('db:setCurrentAcademicYear', async (event, yearName) => {
+  const userId = await getAuthenticatedAdminId(event);
+  return userId ? databaseService.setCurrentAcademicYear(yearName, userId) : { ok: false, message: 'تغيير السنة الدراسية متاح لمدير المدرسة فقط.' };
+});
 ipcMain.handle('db:getSchoolSettings', async (event) => {
   const settings = await databaseService.getSchoolSettings();
   const userId = await getAuthenticatedAdminId(event);
@@ -347,7 +411,9 @@ ipcMain.handle('security:resetAdministratorPassword', (_, username, token, passw
   databaseService.resetAdministratorPassword(username, token, password)
 ));
 
-ipcMain.handle('db:createBackup', async () => {
+ipcMain.handle('db:createBackup', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) throw new Error('إدارة النسخ الاحتياطي متاحة لمدير المدرسة فقط.');
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'اختيار مكان حفظ النسخة الاحتياطية',
     defaultPath: path.join(__dirname, '..', 'data', 'backups', `school-backup-${new Date().toISOString().slice(0, 10)}.db`),
@@ -361,7 +427,9 @@ ipcMain.handle('db:createBackup', async () => {
   return databaseService.createBackup(filePath);
 });
 
-ipcMain.handle('db:restoreBackup', async () => {
+ipcMain.handle('db:restoreBackup', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) throw new Error('استعادة النسخة الاحتياطية متاحة لمدير المدرسة فقط.');
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: 'اختيار ملف النسخة الاحتياطية',
     filters: [{ name: 'Database', extensions: ['db', 'sqlite'] }],
@@ -375,7 +443,11 @@ ipcMain.handle('db:restoreBackup', async () => {
   return databaseService.restoreBackup(filePaths[0]);
 });
 
-ipcMain.handle('db:getLatestBackupInfo', () => databaseService.getLatestBackupInfo());
+ipcMain.handle('db:getLatestBackupInfo', async (event) => {
+  const userId = await getAuthenticatedAdminId(event);
+  if (!userId) throw new Error('معلومات النسخ الاحتياطي متاحة لمدير المدرسة فقط.');
+  return databaseService.getLatestBackupInfo();
+});
 
 app.whenReady().then(createWindow);
 

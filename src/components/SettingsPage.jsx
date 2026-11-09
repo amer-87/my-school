@@ -4,10 +4,12 @@ import { getIraqiLocalPhone, getIraqiWhatsAppNumber } from '../services/studentS
 import UserManagement from './UserManagement';
 
 function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearChange, onRefreshYears, onSchoolSettingsChange }) {
+  const canManageAcademicYears = ['admin', 'super_admin'].includes(currentUser?.role);
+  const canManageUsers = ['admin', 'super_admin'].includes(currentUser?.role);
   const [backupInfo, setBackupInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
-  const [activeTab, setActiveTab] = useState('years'); // Default to 'years'
+  const [activeTab, setActiveTab] = useState(canManageAcademicYears ? 'years' : 'backup');
   const [newYearName, setNewYearName] = useState('');
   const [schoolForm, setSchoolForm] = useState({
     schoolName: '',
@@ -20,6 +22,10 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
   });
   const [schoolMessage, setSchoolMessage] = useState({ text: '', type: '' });
   const [recoveryMailStatus, setRecoveryMailStatus] = useState({ credentialConfigured: false });
+
+  useEffect(() => {
+    if (!canManageAcademicYears && activeTab === 'years') setActiveTab('backup');
+  }, [activeTab, canManageAcademicYears]);
 
   const loadBackupInfo = async () => {
     try {
@@ -214,12 +220,12 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
   return (
     <div className="students-module">
       <div className="tabs-container" style={{ marginBottom: '24px', width: 'fit-content' }}>
-        <button
+        {canManageAcademicYears && <button
           className={`tab-btn ${activeTab === 'years' ? 'active' : ''}`}
           onClick={() => setActiveTab('years')}
         >
           📅 السنوات الدراسية
-        </button>
+        </button>}
         <button
           className={`tab-btn ${activeTab === 'backup' ? 'active' : ''}`}
           onClick={() => setActiveTab('backup')}
@@ -232,7 +238,7 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
         >
           🏫 بيانات المدرسة
         </button>
-        {currentUser?.role === 'admin' && (
+        {canManageUsers && (
           <button
             className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
             onClick={() => setActiveTab('users')}
@@ -244,7 +250,7 @@ function SettingsPage({ currentUser, academicYears, currentAcademicYear, onYearC
 
       {activeTab === 'users' ? (
         <UserManagement currentUser={currentUser} />
-      ) : activeTab === 'years' ? (
+      ) : activeTab === 'years' && canManageAcademicYears ? (
         <div className="years-management">
           <div className="cards">
             <article className="card">

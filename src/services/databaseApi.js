@@ -154,10 +154,6 @@ async function getFinalResults(academicYear) {
   return electronApi?.getFinalResults ? electronApi.getFinalResults(academicYear) : [];
 }
 
-async function promoteStudents(studentIds, userId, currentYear) {
-  return electronApi?.promoteStudents ? electronApi.promoteStudents(studentIds, userId, currentYear) : { ok: true };
-}
-
 async function getExpenses() {
   return electronApi?.getExpenses ? electronApi.getExpenses() : [];
 }
@@ -300,7 +296,7 @@ export {
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
-  getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
+  getFinalResults, getExpenses, createExpense, updateExpenseStatus,
   login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail
 };
@@ -310,7 +306,7 @@ export default {
   createGrade, updateGrade, deleteGrade, createDivision, updateDivision, deleteDivision,
   createExam, updateExam, deleteExam, saveExamResults, getExamResults, getExamsStats, getAttendanceForDate, getEnrichedAttendance, saveAttendanceRecords,
   createFeePayment, getFees, getTuitionExpenses, createTuitionExpense, createCertificate, getSchedule, saveScheduleCell, saveFullSchedule,
-  getFinalResults, promoteStudents, getExpenses, createExpense, updateExpenseStatus,
+  getFinalResults, getExpenses, createExpense, updateExpenseStatus,
   login, requestPasswordRecovery, verifyPasswordRecoveryCode, resetAdministratorPassword, validateUserSession, logout, getUsers, createUser, deleteUser, setUserActive, updateUserPassword, updateOwnUsername, updateGradeFee, applyGradeFeeToAll, updateGradeFeesBulk, createBackup, restoreBackup, getLatestBackupInfo, getLogs, getAcademicYears,
   addAcademicYear, setCurrentAcademicYear, getSchoolSettings, saveSchoolSettings, saveRecoveryMailPassword, getRecoveryMailStatus, testRecoveryMail
 };

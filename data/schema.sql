@@ -72,6 +72,18 @@ CREATE TABLE IF NOT EXISTS exam_results (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS second_round_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    subject_name TEXT NOT NULL,
+    score REAL NOT NULL,
+    total_score REAL NOT NULL DEFAULT 100,
+    academic_year TEXT NOT NULL,
+    modified_by INTEGER,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_id, subject_name, academic_year)
+);
+
 CREATE TABLE IF NOT EXISTS fee_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL,

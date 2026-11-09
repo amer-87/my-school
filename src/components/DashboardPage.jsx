@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getEnrichedAttendance } from '../services/databaseApi';
 
-function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademicYear }) {
+function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademicYear, canViewFinancials = true }) {
   const [todayAttendance, setTodayAttendance] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
   const [attendanceError, setAttendanceError] = useState('');
@@ -48,10 +48,12 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
 
-  const totalCollected = fees.reduce((sum, record) => sum + (record.paid || 0), 0);
-  const latePayments = fees
+  const totalCollected = canViewFinancials
+    ? fees.reduce((sum, record) => sum + (record.paid || 0), 0)
+    : 0;
+  const latePayments = canViewFinancials ? fees
     .filter(record => record.remaining > 0)
-    .slice(0, 5); // Show top 5 late payments
+    .slice(0, 5) : [];
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US').format(amount);
@@ -84,7 +86,7 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
           </div>
         </div>
 
-        <div className="stat-card highlight">
+        {canViewFinancials && <div className="stat-card highlight">
           <div className="stat-icon revenue-icon">💰</div>
           <div className="stat-content">
             <span className="stat-label">الإيرادات المحصلة</span>
@@ -93,7 +95,7 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
               <span className="stat-currency">د.ع</span>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <section className="dashboard-attendance" aria-labelledby="dashboard-attendance-title">
@@ -137,7 +139,7 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
       </section>
 
       <div className="dashboard-main-grid">
-        <div className="dashboard-section late-payments">
+        {canViewFinancials && <div className="dashboard-section late-payments">
           <div className="section-header">
             <span className="header-icon">⚠️</span>
             <h3>أقساط متأخرة</h3>
@@ -163,7 +165,7 @@ function DashboardPage({ students, teachers, fees, onViewStudent, currentAcademi
               ))
             )}
           </div>
-        </div>
+        </div>}
 
         <div className="dashboard-section updates">
           <div className="section-header">

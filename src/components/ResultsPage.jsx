@@ -1,19 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getFinalResults, promoteStudents } from '../services/databaseApi';
+import { getFinalResults } from '../services/databaseApi';
 import { compareArabicNames, getIraqiWhatsAppNumber, getSchoolWhatsAppSignature } from '../services/studentService';
+import { calculateYearEndSubjects, getGradeRule, normalizeResultText as normalize } from '../services/resultCalculation';
 
-function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAcademicYear, viewState, setViewState, onRefresh }) {
+function ResultsPage({ grades, divisions, schoolSettings, currentAcademicYear, viewState, setViewState, onViewStudent }) {
   const [results, setResults] = useState([]);
-
-  // Normalization helper for Arabic strings
-  const normalize = (str) => {
-    if (!str) return '';
-    return str
-      .trim()
-      .replace(/[أإآ]/g, 'ا')
-      .replace(/ة/g, 'ه')
-      .replace(/\s+/g, ' ');
-  };
 
   // Destructure persistent state from props
   const { view: activeSubView, divisionId: selectedDivisionId, course: selectedCourse } = viewState;
@@ -38,6 +29,7 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
     grades.find(g => g.id === selectedDivision?.gradeId),
     [grades, selectedDivision]
   );
+  const gradeRule = useMemo(() => getGradeRule(selectedGrade), [selectedGrade]);
 
   const loadResults = async () => {
     setLoading(true);
@@ -63,14 +55,38 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
     return results
       .filter(r => String(r.divisionId) === divId)
       .map(s => {
-        const courseSubjects = s.subjects.filter(sub => normalize(sub.course) === targetCourse);
+        const yearEndSubjects = calculateYearEndSubjects(s, selectedGrade);
+        const isFinalCourse = targetCourse === normalize('النهائي');
+        const yearEndBySubject = new Map(yearEndSubjects.map((subject) => [subject.key, subject]));
+        const courseSubjects = s.subjects
+          .filter(sub => normalize(sub.course) === targetCourse)
+          .map((subject) => {
+            const yearEndSubject = isFinalCourse
+              ? yearEndBySubject.get(normalize(subject.name))
+              : null;
+            if (yearEndSubject?.secondRoundScore === null || yearEndSubject?.secondRoundScore === undefined) {
+              return subject;
+            }
+            return {
+              ...subject,
+              firstRoundScore: subject.score,
+              score: yearEndSubject.secondRoundScore,
+              isSecondRound: true,
+            };
+          });
         const validSubjects = courseSubjects.filter(sub => sub.score !== null);
         const totalScore = validSubjects.reduce((sum, sub) => sum + sub.score, 0);
         const maxPossible = validSubjects.reduce((sum, sub) => sum + sub.total, 0);
-        const average = maxPossible > 0 ? (totalScore / maxPossible) * 100 : 0;
-        const isFailed = validSubjects.some(sub => sub.score < (sub.total / 2));
+        const hasFirstRoundFailure = yearEndSubjects.some((sub) => sub.failedInFirstRound);
+        const allSubjectsPassed = yearEndSubjects.length > 0
+          && yearEndSubjects.every((sub) => sub.complete && sub.calculatedScore >= 50);
+        const average = validSubjects.length
+          ? totalScore / validSubjects.length
+          : 0;
 
-        let status = validSubjects.length === 0 ? 'غير مكتمل' : (isFailed ? 'مكمل' : 'ناجح');
+        let status = allSubjectsPassed
+          ? 'ناجح'
+          : hasFirstRoundFailure ? 'مكمل' : 'غير مكتمل';
 
         // If student is already promoted or graduated in the DB, show that status
         if (s.studentStatus === 'ناجح ومرحل' || s.studentStatus === 'خريج') {
@@ -80,6 +96,7 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
         return {
           ...s,
           courseSubjects,
+          yearEndSubjects,
           totalScore,
           maxPossible,
           average: average.toFixed(1),
@@ -87,34 +104,7 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
         };
       })
       .sort((first, second) => compareArabicNames(first.fullName, second.fullName));
-  }, [results, selectedDivisionId, selectedCourse]);
-
-  const handlePromote = async () => {
-    // Only students who are "Pass" based on scores AND still have "Active" status in DB
-    const graduates = filteredResults.filter(r => r.status === 'ناجح' && r.studentStatus === 'نشط');
-
-    if (graduates.length === 0) {
-      alert('لا يوجد طلاب ناجحون جدد للترحيل في القائمة الحالية (ربما تم ترحيلهم مسبقاً).');
-      return;
-    }
-
-    if (!window.confirm(`هل أنت متأكد من ترحيل ${graduates.length} طالب ناجح للعام القادم؟`)) {
-      return;
-    }
-
-    try {
-      const result = await promoteStudents(graduates.map(g => g.id), currentUser.id, currentAcademicYear);
-
-      if (result.ok) {
-        alert(`تم ترحيل الطلاب بنجاح إلى العام الدراسي الجديد: ${result.nextYear}.\n\nالطلاب المرحلون سيختفون من قوائم هذا العام وسيظهرون في صفوفهم الجديدة في العام القادم.`);
-        if (onRefresh) await onRefresh();
-        await loadResults();
-      }
-    } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء الترحيل.');
-    }
-  };
+  }, [results, selectedDivisionId, selectedCourse, selectedGrade]);
 
   const sendWhatsAppResult = (student) => {
     if (!student.guardianPhone) {
@@ -128,11 +118,18 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
 
     student.courseSubjects.forEach(sub => {
       const scoreStr = sub.score !== null ? `${sub.score}` : '—';
-      message += `- ${sub.name}: ${scoreStr} / ${sub.total}\n`;
+      const roundLabel = sub.isSecondRound
+        ? ` (الدور الثاني، درجة الدور الأول: ${sub.firstRoundScore ?? '—'})`
+        : '';
+      message += `- ${sub.name}: ${scoreStr} / ${sub.total}${roundLabel}\n`;
     });
 
     message += `\n*المجموع:* ${student.totalScore} / ${student.maxPossible}\n`;
-    message += `*المعدل:* ${student.average}%\n`;
+    student.yearEndSubjects.forEach((subject) => {
+      const score = subject.calculatedScore;
+      message += `- النتيجة السنوية لمادة ${subject.name}: ${score === null ? 'غير مكتملة' : `${score.toFixed(1)}%`}\n`;
+    });
+    message += `*المعدل:* ${student.average}\n`;
     message += `*النتيجة النهائية:* ${student.status}`;
     message += getSchoolWhatsAppSignature(schoolSettings);
 
@@ -170,8 +167,8 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
     return (
       <div className="exams-selection-view">
         <div className="selection-grid-header">
-          <h3>النتائج والترحيل: اختر الصف</h3>
-          <p>حدد الشعبة لاستعراض نتائج طلابها أو ترحيلهم للعام القادم.</p>
+          <h3>النتائج: اختر الصف</h3>
+          <p>حدد الشعبة لاستعراض نتائج طلابها.</p>
         </div>
 
         <div className="grades-columns-container">
@@ -211,7 +208,13 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
             <span>‹</span> عودة للاختيار
           </button>
           <h1>نتائج {selectedGrade?.name} - شعبة {selectedDivision?.name}</h1>
-          <p>عرض الدرجات النهائية وترحيل الطلاب الناجحين</p>
+          <p>
+            {gradeRule === 'final-only'
+              ? 'يُحدد النجاح بحسب درجة الامتحان النهائي لكل مادة، والمعدل هو مجموع درجات المواد مقسوماً على عددها.'
+              : gradeRule === 'annual-and-final'
+                ? 'تُحتسب نتيجة المادة من معدل السعي السنوي ودرجة النهائي، ثم يُحسب النجاح لكل مادة.'
+                : 'تُعرض نتائج المواد المسجلة لهذا الصف.'}
+          </p>
         </div>
 
         <div className="module-actions">
@@ -225,14 +228,11 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
               <option value="الشهر الثاني">الشهر الثاني</option>
               <option value="الشهر الثالث">الشهر الثالث</option>
               <option value="الشهر الرابع">الشهر الرابع</option>
+              <option value="الشهر الخامس">الشهر الخامس</option>
               <option value="نصف السنة">نصف السنة</option>
               <option value="النهائي">النهائي</option>
            </select>
         </div>
-
-        <button className="btn btn-secondary promote-btn" onClick={handlePromote}>
-          <span style={{ marginLeft: '8px' }}>🔄</span> ترحيل الناجحين للعام القادم
-        </button>
 
       </div>
 
@@ -253,7 +253,7 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
                       <div>{sub.name}</div>
                     </th>
                   ))}
-                  <th className="results-summary-column" style={{ textAlign: 'center' }}>المعدل %</th>
+                  <th className="results-summary-column" style={{ textAlign: 'center' }}>المعدل</th>
                   <th className="results-status-column" style={{ textAlign: 'center' }}>النتيجة النهائية</th>
                   <th className="results-send-column" style={{ textAlign: 'center' }}>إرسال</th>
                 </tr>
@@ -262,7 +262,15 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
                 {filteredResults.map((row) => (
                   <tr key={row.id}>
                     <td className="results-student-column">
-                      <span className="results-student-name">{row.fullName}</span>
+                      <button
+                        type="button"
+                        className="results-student-name"
+                        onClick={() => onViewStudent?.(row)}
+                        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'right', font: 'inherit' }}
+                        title="عرض ملف الطالب ودرجاته"
+                      >
+                        {row.fullName}
+                      </button>
                       <span className="results-student-id">رقم الطالب: {row.id}</span>
                     </td>
                     {subjectsColumns.map((col, i) => {
@@ -270,19 +278,26 @@ function ResultsPage({ grades, divisions, schoolSettings, currentUser, currentAc
                       return (
                         <td key={i} className="results-subject-column" style={{ textAlign: 'center' }}>
                           {sub && sub.score !== null ? (
-                            <span style={{
-                              color: getScoreColor(sub.score, sub.total),
-                              fontWeight: '700',
-                              fontSize: '16px'
-                            }}>
-                              {sub.score}
-                            </span>
+                            <div>
+                              <span style={{
+                                color: getScoreColor(sub.score, sub.total),
+                                fontWeight: '700',
+                                fontSize: '16px'
+                              }}>
+                                {sub.score}
+                              </span>
+                              {sub.isSecondRound && (
+                                <span style={{ color: '#94a3b8', fontSize: '10px', marginRight: '4px' }} title={`درجة الدور الأول: ${sub.firstRoundScore ?? '—'}`}>
+                                  (د2)
+                                </span>
+                              )}
+                            </div>
                           ) : '—'}
                         </td>
                       );
                     })}
                     <td className="results-summary-column" style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                      {row.average}%
+                      {row.average}
                     </td>
                     <td className="results-status-column" style={{ textAlign: 'center' }}>
                       <span className={`status-pill ${

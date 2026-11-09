@@ -35,7 +35,6 @@ const electronAPI = {
   saveScheduleCell: (payload) => ipcRenderer.invoke('db:saveScheduleCell', payload),
   saveFullSchedule: (divisionId, cells, userId, academicYear) => ipcRenderer.invoke('db:saveFullSchedule', divisionId, cells, userId, academicYear),
   getFinalResults: (academicYear) => ipcRenderer.invoke('db:getFinalResults', academicYear),
-  promoteStudents: (studentIds, userId, currentYear) => ipcRenderer.invoke('db:promoteStudents', studentIds, userId, currentYear),
   getExpenses: () => ipcRenderer.invoke('db:getExpenses'),
   createExpense: (payload, userId, academicYear) => ipcRenderer.invoke('db:createExpense', payload, userId, academicYear),
   updateExpenseStatus: (id, status, userId) => ipcRenderer.invoke('db:updateExpenseStatus', id, status, userId),

@@ -58,8 +58,10 @@ function ExamModal({ isOpen, mode, formData, onChange, onClose, onSubmit, errorM
                 <option value="الشهر الثاني">الشهر الثاني</option>
                 <option value="الشهر الثالث">الشهر الثالث</option>
                 <option value="الشهر الرابع">الشهر الرابع</option>
+                <option value="الشهر الخامس">الشهر الخامس</option>
                 <option value="نصف السنة">نصف السنة</option>
                 <option value="النهائي">النهائي</option>
+                <option value="الدور الثاني">الدور الثاني</option>
               </select>
             </label>
             <label>

@@ -208,6 +208,7 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
     return (
       <ExamResultsPage
         students={students}
+        grades={grades}
         exams={exams}
         initialExamId={selectedExamIdForResult}
         onBack={() => setActiveSubSubView('list')}
@@ -280,8 +281,10 @@ function ExamsPage({ students, grades, divisions, currentUser, currentAcademicYe
               <option value="الشهر الثاني">الشهر الثاني</option>
               <option value="الشهر الثالث">الشهر الثالث</option>
               <option value="الشهر الرابع">الشهر الرابع</option>
+              <option value="الشهر الخامس">الشهر الخامس</option>
               <option value="نصف السنة">نصف السنة</option>
               <option value="النهائي">النهائي</option>
+              <option value="الدور الثاني">الدور الثاني</option>
            </select>
         </div>
         <div className="module-summary">

@@ -10,8 +10,8 @@ const roleLabels = {
   employee: 'موظف إداري',
 };
 
-function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin', onUserUpdate }) {
-  const isOwner = ['admin', 'super_admin'].includes(currentUser?.role);
+function UserManagement({ currentUser, isAdmin = ['admin', 'super_admin'].includes(currentUser?.role), onUserUpdate }) {
+  const canUpdateOwnUsername = ['admin', 'super_admin'].includes(currentUser?.role);
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(initialNewUser);
   const [username, setUsername] = useState(currentUser.username || '');
@@ -218,12 +218,12 @@ function UserManagement({ currentUser, isAdmin = currentUser?.role === 'admin', 
         </p>
       )}
 
-      {isOwner && (
+      {canUpdateOwnUsername && (
         <div className="table-card" style={{ marginBottom: '24px' }}>
           <div className="table-toolbar">
             <div>
               <h3>تغيير اسم المستخدم</h3>
-              <p>يمكن لمدير المدرسة تحديث اسم المستخدم الخاص به.</p>
+              <p>يمكنك تحديث اسم المستخدم الخاص بك.</p>
             </div>
           </div>
           <form onSubmit={handleUpdateUsername} className="modal-form" style={{ padding: '24px' }}>
